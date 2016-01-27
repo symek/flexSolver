@@ -28,34 +28,6 @@ struct Vec3
 };
 
 
-float randZeroToOne()
-{
-    return rand() / (RAND_MAX + 1.);
-}
-
-float rand_FloatRange(float a, float b)
-{
-return ((b-a)*((float)rand()/RAND_MAX))+a;
-}
-
-void InitParticles(Vec4 *particles, Vec3 *velocities, int *phases)
-{
-    for (int i = 0; i < maxParticles; ++i)
-    {
-        particles[i].x = rand_FloatRange(-2.0f, 2.0f);
-        particles[i].y = rand_FloatRange(-2.0f, 2.0f);
-        particles[i].z = rand_FloatRange(-2.0f, 2.0f);
-        particles[i].w = .1f;
-
-        velocities[i].x = rand_FloatRange(-10.0f, 10.0f);
-        velocities[i].y = rand_FloatRange(-10.0f, 10.0f);
-        velocities[i].z = rand_FloatRange(-10.0f, 10.0f);
-
-        phases[i] = flexMakePhase(0, eFlexPhaseSelfCollide | eFlexPhaseFluid);
-    }
-
-}
-
 
 void SetFlexParams(FlexParams &g_params)
 {
@@ -147,6 +119,35 @@ void SetFlexParams(FlexParams &g_params)
         g_params.mShapeCollisionMargin = g_params.mCollisionDistance*0.25f;
 }
 
+float randZeroToOne()
+{
+    return rand() / (RAND_MAX + 1.);
+}
+
+float rand_FloatRange(float a, float b)
+{
+return ((b-a)*((float)rand()/RAND_MAX))+a;
+}
+
+void InitParticles(Vec4 *particles, Vec3 *velocities, int *phases)
+{
+    for (int i = 0; i < maxParticles; ++i)
+    {
+        particles[i].x = rand_FloatRange(-2.0f, 2.0f);
+        particles[i].y = rand_FloatRange(-2.0f, 2.0f);
+        particles[i].z = rand_FloatRange(-2.0f, 2.0f);
+        particles[i].w = .1f;
+
+        velocities[i].x = rand_FloatRange(-10.0f, 10.0f);
+        velocities[i].y = rand_FloatRange(-10.0f, 10.0f);
+        velocities[i].z = rand_FloatRange(-10.0f, 10.0f);
+
+        // phases[i] = flexMakePhase(0, eFlexPhaseSelfCollide | eFlexPhaseFluid);
+        phases[i] = flexMakePhase(0, eFlexPhaseSelfCollide);
+    }
+
+}
+
 void RenderParticles(Vec4 *particles, Vec3* velocities, int frame)
 {
     const char* tmp = "./tmp/particles.%i.obj";
@@ -195,11 +196,11 @@ int main(void)
         InitParticles(particles, velocities, phases);
         float t        = 0;
         int   fps      = 24;
-        int   substeps = 2;
+        int   substeps = 5;
         float seconds  = 5;
 
-        flexSetParticles(solver, particlesPtr, maxParticles, eFlexMemoryHostAsync);
-        flexSetVelocities(solver, velocitiesPtr, maxParticles, eFlexMemoryHostAsync);
+        flexSetParticles(solver, particlesPtr, maxParticles, eFlexMemoryHost);
+        flexSetVelocities(solver, velocitiesPtr, maxParticles, eFlexMemoryHost);
         flexSetActive(solver, &actives[0], maxParticles, eFlexMemoryHost);
         while (t < seconds)
         {
@@ -209,16 +210,16 @@ int main(void)
                 // ModifyParticles(particles, velocities);
 
                 // update GPU data asynchronously
-                flexSetParticles(solver, particlesPtr, maxParticles, eFlexMemoryHostAsync);
-                flexSetVelocities(solver, velocitiesPtr, maxParticles, eFlexMemoryHostAsync);
+                flexSetParticles(solver, particlesPtr, maxParticles, eFlexMemoryHost);
+                flexSetVelocities(solver, velocitiesPtr, maxParticles, eFlexMemoryHost);
 
                 // tick solver
                 flexUpdateSolver(solver, dt, substeps, &timer);
                 t += dt;
 
                 // // kick off async memory reads from device
-                flexGetParticles(solver, particlesPtr, maxParticles, eFlexMemoryHostAsync);
-                flexGetVelocities(solver, velocitiesPtr, maxParticles, eFlexMemoryHostAsync);
+                flexGetParticles(solver, particlesPtr, maxParticles, eFlexMemoryHost);
+                flexGetVelocities(solver, velocitiesPtr, maxParticles, eFlexMemoryHost);
 
                 // // wait for GPU to finish working (can perform async. CPU work here)
                 flexSetFence();
