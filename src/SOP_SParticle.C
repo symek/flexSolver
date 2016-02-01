@@ -104,7 +104,7 @@ SOP_SParticle::SOP_SParticle(OP_Network *net, const char *name, OP_Operator *op)
     , mySolver(NULL)
     , myTimer(NULL)
     , myParms(NULL)
-    , maxParticles(6553)
+    , maxParticles(1048576)
 {
     // Make sure that our offsets are allocated.  Here we allow up to 32
     // parameters, no harm in over allocating.  The definition for this
@@ -207,26 +207,70 @@ void
 SOP_SParticle::timeStep(fpreal now)
 {
     UT_Vector3 force(FX(now), FY(now), FZ(now));
-    int nbirth = BIRTH(now);
+    // int nbirth = BIRTH(now);
 
     if (error() >= UT_ERROR_ABORT)
         return;
 
-    // for (int i = 0; i < nbirth; ++i)
-    //     birthParticle();
+   for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
+    {
+        UT_Vector3 vel;
+        if (mySourceVel.isValid())
+            vel = mySourceVel.get(srcptoff);
+        else
+            vel = UT_Vector3(0,0,0);
 
-    // for (GA_Size i = 0; i < mySystem->getNumParticles(); i++)
-    // {
-    //     if (!moveParticle(mySystem->vertexPoint(i), force))
-    //         mySystem->deadParticle(i);
-    // }
+        vel += force;
+        uint index = static_cast<int>(srcptoff);
+        uint v = index * 3;
+        velocities[v]   = vel.x();
+        velocities[v+1] = vel.y();
+        velocities[v+2] = vel.z();
+    }
 
-    // mySystem->deleteDead();
+     flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
+
+     const float dt = 1.0 / 24.0;
+     const int substeps = 1;
+
+    // tick solver
+    flexUpdateSolver(mySolver, dt, substeps, myTimer);
+    // update GPU data asynchronously
+  
+    flexGetParticles(mySolver, (float*)&particles[0], maxParticles, eFlexMemoryHost);
+
+    for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
+    {
+       uint p = static_cast<int>(srcptoff) * 4;
+       const UT_Vector3 pos = UT_Vector3(particles[p], particles[p+1], particles[p+2]);
+       gdp->setPos3(srcptoff, pos);
+    }
 }
 
 void
 SOP_SParticle::initSystem()
 {
+    if (!mySource)
+        return;
+
+     FlexError status = flexInit();
+
+    if(status)
+    {
+        switch(status)
+        {
+            case 0:
+            break;
+            case 1:
+            std::cout << "FlexError: The header version does not match the library binary." << std::endl;
+            return ;
+            case 2:
+            std::cout << "FlexError:The GPU associated with the calling thread does not meet requirements." << std::endl;
+            std::cout << "An SM3.0 GPU or above is required" << std::endl;
+            return ;
+        }
+    }
+
     if (!gdp) 
         gdp = new GU_Detail;
 
@@ -237,6 +281,8 @@ SOP_SParticle::initSystem()
         myParms   = new FlexParams();
     }
 
+
+    uint numpoints = mySource->getPointMap().indexSize();
     // Check to see if we really need to reset everything
     if (gdp->getPointMap().indexSize() > 0 || myVelocity.isInvalid())
     {
@@ -252,6 +298,70 @@ SOP_SParticle::initSystem()
             myVelocity.getAttribute()->setTypeInfo(GA_TYPE_VECTOR);
         myLife = GA_RWHandleF(gdp->addFloatTuple(GA_ATTRIB_POINT, "life", 2));
     }
+
+    
+    myParms->mPlanes[0][0] = 0.0f;
+    myParms->mPlanes[0][1] = 1.0f;
+    myParms->mPlanes[0][2] = 0.0f;
+    myParms->mPlanes[0][3] = 0.0f;
+    myParms->mNumPlanes = 1;
+
+    InitFlexParams(*myParms);
+    flexSetParams(mySolver, myParms);
+
+    maxParticles = SYSmin(maxParticles, numpoints);
+    // alloc CUDA pinned host memory to allow asynchronous memory transfers
+    particles.resize(maxParticles*4, 0.0f);
+    velocities.resize(maxParticles*3, 0.0f);
+    actives.resize(maxParticles, 0.0f);
+
+    int fluidPhase  = flexMakePhase(0, eFlexPhaseSelfCollide | eFlexPhaseFluid);
+    phases.resize(maxParticles);
+
+    // Create active particels set:
+    for (int i=0; i < maxParticles; ++i)
+    {
+        actives[i] = i;
+        phases[i] = fluidPhase;
+    }
+
+
+
+    // GA_Offset srcptoff = GA_INVALID_OFFSET;
+
+    if (mySource)
+    {
+        for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
+        {
+            const UT_Vector3 pos = mySource->getPos3(srcptoff);
+            UT_Vector3 vel;
+            if (mySourceVel.isValid())
+                vel = mySourceVel.get(srcptoff);
+            else
+                vel = UT_Vector3(0,0,0);
+            uint index = static_cast<int>(srcptoff);
+            uint p = index * 4;
+            uint v = index * 3;
+            particles[p]    = pos.x();
+            particles[p+1]  = pos.y();
+            particles[p+2]  = pos.z();
+            particles[p+3]  = 1.0;
+            velocities[v]   = vel.x();
+            velocities[v+1] = vel.y();
+            velocities[v+2] = vel.z();
+
+            gdp->insertPointCopy(srcptoff);
+            gdp->setPos3(srcptoff, pos);
+        }
+    }
+  
+    // Initialize solver with sources:
+    flexSetParticles(mySolver, &particles[0], maxParticles, eFlexMemoryHost);
+    flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
+    flexSetPhases(mySolver, &phases[0], maxParticles, eFlexMemoryHost);
+    flexSetActive(mySolver, &actives[0], maxParticles, eFlexMemoryHost);
+    
+
 }
 
 OP_ERROR
@@ -275,22 +385,6 @@ SOP_SParticle::cookMySop(OP_Context &context)
     fpreal currframe = chman->getSample(context.getTime());
     fpreal reset = RESET(); // Find our reset frame...
 
-    if (currframe <= reset || !mySystem)
-    {
-        myLastCookTime = reset;
-        initSystem();
-    }
-    // else
-    // {
-    //     // Set up the collision detection object
-    //     const GU_Detail *collision = inputGeo(1, context);
-    // if (collision)
-    // {
-    //     myCollision = new GU_RayIntersect;
-    //     myCollision->init(collision);
-    // }
-    // else myCollision = 0;
-
     // Set up our source information...
     mySource = inputGeo(0, context);
     if (mySource)
@@ -302,30 +396,47 @@ SOP_SParticle::cookMySop(OP_Context &context)
         mySourceVel = GA_ROHandleV3(mySource->findFloatTuple(GA_ATTRIB_POINT, "N", 3));
     }
 
+    if (currframe <= reset || !mySolver)
+    {
+        myLastCookTime = reset;
+        initSystem();
+    }
+    else
+    {
+        //     // Set up the collision detection object
+        //     const GU_Detail *collision = inputGeo(1, context);
+        // if (collision)
+        // {
+        //     myCollision = new GU_RayIntersect;
+        //     myCollision->init(collision);
+        // }
+        // else myCollision = 0;
+
+
         // This is where we notify our handles (if any) if the inputs have
         // changed.  This is normally done in cookInputGroups, but since there
         // is no input group, NULL is passed as the fourth argument.
         notifyGroupParmListeners(0, -1, mySource, NULL);
 
-    // Now cook the geometry up to our current time
-    // Here, we could actually re-cook the source input to get a moving
-    // source...  But this is just an example ;-)
+        // Now cook the geometry up to our current time
+        // Here, we could actually re-cook the source input to get a moving
+        // source...  But this is just an example ;-)
 
-    currframe += 0.05;  // Add a bit to avoid floating point error
-    while (myLastCookTime < currframe)
-    {
-        // Here we have to convert our frame number to the actual time.
-        timeStep(chman->getTime(myLastCookTime));
-        myLastCookTime += 1;
+        currframe += 0.05;  // Add a bit to avoid floating point error
+        while (myLastCookTime < currframe)
+        {
+            // Here we have to convert our frame number to the actual time.
+            timeStep(chman->getTime(myLastCookTime));
+            myLastCookTime += 1;
+        }
+
+        // if (myCollision) delete myCollision;
+
+        // Set the node selection for the generated particles. This will 
+        // highlight all the points generated by this node, but only if the 
+        // highlight flag is on and the node is selected.
+        select(GA_GROUP_POINT);
     }
-
-    // if (myCollision) delete myCollision;
-
-    // Set the node selection for the generated particles. This will 
-    // highlight all the points generated by this node, but only if the 
-    // highlight flag is on and the node is selected.
-    select(GA_GROUP_POINT);
-    // }
 
     return error();
 }
