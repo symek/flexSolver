@@ -36,7 +36,7 @@ void SetFlexParams(FlexParams &g_params)
     g_params.mGravity[1] = -9.8f;
     g_params.mGravity[2] = 0.0f;
 
-    g_params.mWind[0] = 0.1f;
+    g_params.mWind[0] = 10.1f;
     g_params.mWind[1] = 0.0f;
     g_params.mWind[2] = 0.02f;
 
@@ -136,9 +136,9 @@ void InitPositions(Vec4 *particles)
     srand (time(NULL));
     for (int i = 0; i < maxParticles; ++i)
     {
-        particles[i].x = rand_FloatRange(-2.0f, 2.0f);
-        particles[i].y = rand_FloatRange(-2.0f, 2.0f);
-        particles[i].z = rand_FloatRange(-2.0f, 2.0f);
+        particles[i].x = rand_FloatRange(-0.0f, 1.0f);
+        particles[i].y = rand_FloatRange(-0.0f, 1.0f);
+        particles[i].z = rand_FloatRange(-0.0f, 1.0f);
         particles[i].w = .1f;
     }
 }
@@ -235,11 +235,13 @@ int main(void)
         const int   substeps = 10;
         const float seconds  = 5;
 
-        flexSetParticles(solver, (float*)&particles[0], maxParticles, eFlexMemoryHost);
-        flexSetVelocities(solver, (float*)&velocities[0], maxParticles, eFlexMemoryHost);
+        flexSetParticles(solver, &particles[0].x, maxParticles, eFlexMemoryHost);
+        flexSetVelocities(solver, &velocities[0].x, maxParticles, eFlexMemoryHost);
         flexSetPhases(solver, &phases[0], maxParticles, eFlexMemoryHost);
         flexSetActive(solver, &actives[0], maxParticles, eFlexMemoryHost);
         std::cout << "Actives: " << flexGetActiveCount(solver) << std::endl;
+        int counter = 0;
+                InitVelocities(velocities);
         while (t <= seconds)
         {
                 const float dt = 1.0f/(fps);
@@ -251,18 +253,23 @@ int main(void)
                 flexUpdateSolver(solver, dt, substeps, &timer);
                 // update GPU data asynchronously
                 // flexSetParticles(solver, particlesPtr, maxParticles, eFlexMemoryHost);
-                InitVelocities(velocities);
-                flexSetVelocities(solver, (float*)&velocities[0], maxParticles, eFlexMemoryHost);
+                // flexSetVelocities(solver, (float*)&velocities[0], maxParticles, eFlexMemoryHost);
 
                 t += dt;
 
                 // // wait for GPU to finish working (can perform async. CPU work here)
                 // // kick off async memory reads from device
-                int part = 0;
-                std::cout << "Before update: ";
-                std::cout << particles[part].x << ", " << particles[part].y << ", " << particles[part].z;
-                std::cout << std::endl;
+                int part = 1000;
+                // std::cout << "Before update: ";
+                // std::cout << particles[part].x << ", " << particles[part].y << ", " << particles[part].z;
+                // std::cout << std::endl;
                 flexGetParticles(solver, (float*)&output[0], maxParticles, eFlexMemoryHost);
+                // double f = floor(t);
+                // if (int(t)%100 == 0)
+                // // {
+                //     std::cout << " update: " << t/fps << " sec." << std::endl;
+
+                // }
                 // flexSetFence();
                 // flexGetVelocities(solver, velocitiesPtr, maxParticles, eFlexMemoryHost);
                 std::cout << "After  update: ";
@@ -275,6 +282,7 @@ int main(void)
                 const int frame =  t / dt;
                 RenderParticles(output, frame);
                 // flexWaitFence();
+                counter++;
 
         }
 
