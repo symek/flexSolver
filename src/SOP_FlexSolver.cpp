@@ -46,20 +46,47 @@ newSopOperator(OP_OperatorTable *table)
         0));
 }
 
+    // int   mNumIterations;                //!< Number of solver iterations to perform per-substep
+    // float mGravity[3];                  //!< Constant acceleration applied to all particles
+
+    // float mRadius;                      //!< The maximum interaction radius for particles
+    // float mSolidRestDistance;           //!< The distance non-fluid particles attempt to maintain from each other, must be in the range (0, radius]
+    // float mFluidRestDistance;           //!< The distance fluid particles are spaced at the rest density, must be in the range (0, radius], for fluids this should generally be 50-70% of mRadius, for rigids this can simply be the same as the particle radius
+
 // The names here have to match the inline evaluation functions
 static PRM_Name names[] = {
-    PRM_Name("reset", "Reset Frame"),
-    PRM_Name("birth", "Birth Rate"),
-    PRM_Name("force", "Force"),
+    PRM_Name("reset",            "Reset Frame"),
+    PRM_Name("maxParticles",     "Max Particles"),
+    PRM_Name("numIterations",    "Solver interations"),
+    PRM_Name("radius",           "Interact radius"),
+    PRM_Name("solidRestDistance","Non-fluid particles radius"),
+    PRM_Name("fluidRestDistance","Rest density"),
+
+
+
+    PRM_Name("force",        "Force"),
 };
 
-static PRM_Default  birthRate(10);
+static PRM_Default  MAXPARTICLESDEF(1024*1024);
+static PRM_Default  RADIUSDEF(0.15);
+static const char* resetFrameHelp        = "Set frame when simulation will reset.";
+static const char* maxParticlesHelp      = "Maximum number of particles to be created on the GPU.";  
+static const char* numIterationsHelp     = "Number of solver iterations to perform per-substep.";  
+static const char* radiusHelp            = "The maximum interaction radius for particles.";  
+static const char* solidRestDistanceHelp = "The distance non-fluid particles attempt to maintain from each other, must be in the range (0, radius].";  
+static const char* fluidRestDistanceHelp = "The distance fluid particles are spaced at the rest density, must be in the range (0, radius], for fluids this should generally be 50-70% of mRadius, for rigids this can simply be the same as the particle radius.";      
+
 
 PRM_Template
 SOP_FlexSolver::myTemplateList[] = {
-    PRM_Template(PRM_INT,   1, &names[0], PRMoneDefaults),
-    PRM_Template(PRM_INT_J, 1, &names[1], &birthRate),
-    PRM_Template(PRM_XYZ_J, 3, &names[2]),
+    PRM_Template(PRM_INT,   1, &names[0], PRMoneDefaults, 0, 0, 0, 0, 1, resetFrameHelp),
+    PRM_Template(PRM_INT_J, 1, &names[1], &MAXPARTICLESDEF, 0, 0, 0, 0, 1, maxParticlesHelp),
+    PRM_Template(PRM_INT_J, 1, &names[2], PRMtwoDefaults, 0, 0, 0, 0, 1, numIterationsHelp),
+    PRM_Template(PRM_FLT_J, 1, &names[3], &RADIUSDEF, 0, 0, 0, 0, 1, radiusHelp),
+    PRM_Template(PRM_FLT_J, 1, &names[4], PRMzeroDefaults, 0, 0, 0, 0, 1, solidRestDistanceHelp),
+    PRM_Template(PRM_FLT_J, 1, &names[5], PRMzeroDefaults, 0, 0, 0, 0, 1, fluidRestDistanceHelp),
+
+    PRM_Template(PRM_XYZ_J, 3, &names[6]),
     PRM_Template(),
 };
 
@@ -88,6 +115,24 @@ SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *o
 
     // Now, flag that nothing has been built yet...
     myVelocity.clear();
+
+    FlexError status = flexInit();
+
+    if(status)
+    {
+        switch(status)
+        {
+            case 0:
+            break;
+            case 1:
+            std::cout << "FlexError: The header version does not match the library binary." << std::endl;
+            return ;
+            case 2:
+            std::cout << "FlexError:The GPU associated with the calling thread does not meet requirements." << std::endl;
+            std::cout << "An SM3.0 GPU or above is required" << std::endl;
+            return ;
+        }
+    }
 }
 
 SOP_FlexSolver::~SOP_FlexSolver()
@@ -127,7 +172,9 @@ SOP_FlexSolver::timeStep(fpreal now)
         velocities[v+2] = vel.z();
     }
 
-     flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
+    InitFlexParams(*myParms, now);
+    flexSetParams(mySolver, myParms);
+    flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
 
      const float dt = 1.0 / 24.0;
      const int substeps = 1;
@@ -146,42 +193,9 @@ SOP_FlexSolver::timeStep(fpreal now)
     }
 }
 
-void
-SOP_FlexSolver::initSystem()
+void 
+SOP_FlexSolver::resetGdp()
 {
-    if (!mySource)
-        return;
-
-     FlexError status = flexInit();
-
-    if(status)
-    {
-        switch(status)
-        {
-            case 0:
-            break;
-            case 1:
-            std::cout << "FlexError: The header version does not match the library binary." << std::endl;
-            return ;
-            case 2:
-            std::cout << "FlexError:The GPU associated with the calling thread does not meet requirements." << std::endl;
-            std::cout << "An SM3.0 GPU or above is required" << std::endl;
-            return ;
-        }
-    }
-
-    if (!gdp) 
-        gdp = new GU_Detail;
-
-    if (!mySolver)
-    {
-        mySolver  = flexCreateSolver(maxParticles,0);
-        myTimer   = new FlexTimers();
-        myParms   = new FlexParams();
-    }
-
-
-    uint numpoints = mySource->getPointMap().indexSize();
     // Check to see if we really need to reset everything
     if (gdp->getPointMap().indexSize() > 0 || myVelocity.isInvalid())
     {
@@ -197,37 +211,11 @@ SOP_FlexSolver::initSystem()
             myVelocity.getAttribute()->setTypeInfo(GA_TYPE_VECTOR);
         myLife = GA_RWHandleF(gdp->addFloatTuple(GA_ATTRIB_POINT, "life", 2));
     }
-
-    
-    myParms->mPlanes[0][0] = 0.0f;
-    myParms->mPlanes[0][1] = 1.0f;
-    myParms->mPlanes[0][2] = 0.0f;
-    myParms->mPlanes[0][3] = 0.0f;
-    myParms->mNumPlanes = 1;
-
-    InitFlexParams(*myParms);
-    flexSetParams(mySolver, myParms);
-
-    maxParticles = SYSmin(maxParticles, numpoints);
-    // alloc CUDA pinned host memory to allow asynchronous memory transfers
-    particles.resize(maxParticles*4, 0.0f);
-    velocities.resize(maxParticles*3, 0.0f);
-    actives.resize(maxParticles, 0.0f);
-
-    int fluidPhase  = flexMakePhase(0, eFlexPhaseSelfCollide | eFlexPhaseFluid);
-    phases.resize(maxParticles);
-
-    // Create active particels set:
-    for (int i=0; i < maxParticles; ++i)
-    {
-        actives[i] = i;
-        phases[i] = fluidPhase;
-    }
+}
 
 
-
-    // GA_Offset srcptoff = GA_INVALID_OFFSET;
-
+void SOP_FlexSolver::copySourceParticles()
+{
     if (mySource)
     {
         for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
@@ -253,6 +241,73 @@ SOP_FlexSolver::initSystem()
             gdp->setPos3(srcptoff, pos);
         }
     }
+
+}
+
+void
+SOP_FlexSolver::initSystem(fpreal current_time)
+{
+    if (!mySource)
+        return;
+
+
+    if (mySolver)
+    {
+        flexDestroySolver(mySolver);
+        if (myTimer) delete myTimer;
+        if (myParms) delete myParms;
+        mySolver = NULL;
+        myTimer  = NULL;
+        myParms  = NULL;
+    }
+
+
+    if (!gdp) 
+        gdp = new GU_Detail;
+
+    if (!mySolver)
+    {
+        mySolver  = flexCreateSolver(maxParticles,0);
+        myTimer   = new FlexTimers();
+        myParms   = new FlexParams();
+    }
+
+    // Clean previous geometry;
+    resetGdp();
+
+    // TMP: add collision ground:
+    myParms->mPlanes[0][0] = 0.0f;
+    myParms->mPlanes[0][1] = 1.0f;
+    myParms->mPlanes[0][2] = 0.0f;
+    myParms->mPlanes[0][3] = 0.0f;
+    myParms->mNumPlanes = 1;
+
+    // Set parameters for solver:
+    InitFlexParams(*myParms, current_time);
+    flexSetParams(mySolver, myParms);
+
+    // Make sure we can handle particles count.
+    uint nSourcePoints = mySource->getPointMap().indexSize();
+    maxParticles       = SYSmin(maxParticles, nSourcePoints);
+
+    // alloc CUDA pinned host memory to allow asynchronous memory transfers
+    // Above isn't true TODO
+    particles.resize(maxParticles*4, 0.0f);
+    velocities.resize(maxParticles*3, 0.0f);
+    actives.resize(maxParticles, 0.0f);
+
+    int fluidPhase  = flexMakePhase(0, eFlexPhaseSelfCollide | eFlexPhaseFluid);
+    phases.resize(maxParticles);
+
+    // Create active particels set:
+    for (int i=0; i < maxParticles; ++i)
+    {
+        actives[i] = i;
+        phases[i] = fluidPhase;
+    }
+
+    // Copy source particles into self:
+    copySourceParticles();
   
     // Initialize solver with sources:
     flexSetParticles(mySolver, &particles[0], maxParticles, eFlexMemoryHost);
@@ -281,6 +336,7 @@ SOP_FlexSolver::cookMySop(OP_Context &context)
     CH_Manager *chman = OPgetDirector()->getChannelManager();
 
     // This is the frame that we're cooking at...
+    fpreal current_time = context.getTime();
     fpreal currframe = chman->getSample(context.getTime());
     fpreal reset = RESET(); // Find our reset frame...
 
@@ -298,7 +354,7 @@ SOP_FlexSolver::cookMySop(OP_Context &context)
     if (currframe <= reset || !mySolver)
     {
         myLastCookTime = reset;
-        initSystem();
+        initSystem(current_time);
     }
     else
     {
@@ -345,8 +401,8 @@ SOP_FlexSolver::inputLabel(unsigned inum) const
 {
     switch (inum)
     {
-    case 0: return "Particle Source Geometry";
-    case 1: return "Collision Object";
+    case 0: return "Particle Source Geometry.";
+    case 1: return "Collision Objects.";
     }
     return "Unknown source";
 }
