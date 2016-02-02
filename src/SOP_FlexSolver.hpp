@@ -34,7 +34,8 @@ protected:
                      const UT_Vector3 &force);
 
     void        resetGdp();
-    void        copySourceParticles();
+    void        copySourceParticles(bool, bool);
+    void        copyClothPrimitives();
     void        initSystem(fpreal);
     void        timeStep(fpreal now);
 
@@ -69,11 +70,13 @@ private:
     FlexSolver*          mySolver; 
     FlexTimers*          myTimer; 
     FlexParams*          myParms;  
+    FlexExtContainer*    container;
     uint                 maxParticles;
     std::vector<float>   particles;
     std::vector<float>   velocities;
     std::vector<int>     actives;
     std::vector<int>     phases;
+    std::vector<int>     indices;
     static int          *myOffsets;
 
     void InitFlexParams(FlexParams &g_params, fpreal t)

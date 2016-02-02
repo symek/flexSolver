@@ -2,6 +2,7 @@
 
 
 #include <flex.h>
+#include <flexExt.h>
 #include <stddef.h>
 #include <iostream>
 #include <cstdio>
@@ -12,6 +13,7 @@
 #include <stdlib.h> // for NULL wtf?"
 
 
+// #include "cloth.h"
 #include "SOP_FlexSolver.hpp"
 
 #include <GU/GU_Detail.h>
@@ -138,6 +140,7 @@ SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *o
 SOP_FlexSolver::~SOP_FlexSolver()
 {
   
+    flexExtDestroyContainer(container);
     flexDestroySolver(mySolver);
     flexShutdown();
     if (myTimer)
@@ -214,43 +217,105 @@ SOP_FlexSolver::resetGdp()
 }
 
 
-void SOP_FlexSolver::copySourceParticles()
+void SOP_FlexSolver::copySourceParticles(bool copyUsed=false, bool copyGdp=true)
 {
     if (mySource)
     {
         for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
         {
-            const UT_Vector3 pos = mySource->getPos3(srcptoff);
-            UT_Vector3 vel;
-            if (mySourceVel.isValid())
-                vel = mySourceVel.get(srcptoff);
-            else
-                vel = UT_Vector3(0,0,0);
-            uint index = static_cast<int>(srcptoff);
-            uint p = index * 4;
-            uint v = index * 3;
-            particles[p]    = pos.x();
-            particles[p+1]  = pos.y();
-            particles[p+2]  = pos.z();
-            particles[p+3]  = 1.0;
-            velocities[v]   = vel.x();
-            velocities[v+1] = vel.y();
-            velocities[v+2] = vel.z();
+            // GA_OffsetArray vertices;
+            // NOTE: Copy only free points!
+            if (!mySource->isPointUsed(srcptoff) || copyUsed)
+            {
+                const UT_Vector3 pos = mySource->getPos3(srcptoff);
+                UT_Vector3 vel;
+                if (mySourceVel.isValid())
+                    vel = mySourceVel.get(srcptoff);
+                else
+                    vel = UT_Vector3(0,0,0);
+                uint index = static_cast<int>(srcptoff);
+                uint p = index * 4;
+                uint v = index * 3;
+                particles[p]    = pos.x();
+                particles[p+1]  = pos.y();
+                particles[p+2]  = pos.z();
+                particles[p+3]  = 1.0;
+                velocities[v]   = vel.x();
+                velocities[v+1] = vel.y();
+                velocities[v+2] = vel.z();
 
-            gdp->insertPointCopy(srcptoff);
-            gdp->setPos3(srcptoff, pos);
+                if (copyGdp)
+                {   
+                    gdp->insertPointCopy(srcptoff);
+                    gdp->setPos3(srcptoff, pos);
+                }
+            }
         }
     }
+
+}
+
+void SOP_FlexSolver::copyClothPrimitives()
+{
+    // copy points pos first, but dont copy them into gdp. 
+    copySourceParticles(true, false);
+    // gdp->duplicate(*mySource);   
+
+    GEO_Primitive *prim;
+    uint prims = mySource->getPrimitiveMap().indexSize();
+    uint points = mySource->getPointMap().indexSize();
+    indices.reserve(prims*3);
+
+    // GA_PrimitiveTypeMask mask = GA_PrimitiveTypeMask();
+    // mask.add(GA_PrimitiveTypeId(GEO_FAMILY_FACE));
+
+    GA_FOR_ALL_PRIMITIVES(mySource, prim)
+    {
+        GA_Primitive::const_iterator vt;
+        for (prim->beginVertex(vt); !vt.atEnd(); ++vt)
+        {
+            const GA_Offset srcptoff = vt.getPointOffset();
+            indices.push_back(exint(srcptoff)); 
+        }
+    }
+
+    FlexExtAsset* cloth;
+    float stretchStiffness =0.5f;
+    float bendStiffness = 0.5f;
+    float tetherStiffness = 0.0f;
+    float tetherGive = 0.0f;
+    float pressure = 0.0f;
+
+    cloth = flexExtCreateClothFromMesh(&particles[0], points, &indices[0], prims, 
+        stretchStiffness, bendStiffness, tetherStiffness, tetherGive,  pressure);
+
+    int *i;
+    flexExtAllocParticles(container, points, i);
+    FlexExtInstance* instanceCloth;
+    const float transform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    int phase = flexMakePhase(0, eFlexPhaseSelfCollide);
+    int invMassScale = 1;
+    instanceCloth = flexExtCreateInstance(container, cloth, transform, 0, 0, 0, phase, invMassScale);
+    
+
+
+
+
 
 }
 
 void
 SOP_FlexSolver::initSystem(fpreal current_time)
 {
+    // Nothing to do here;
     if (!mySource)
         return;
 
+    // Nothing to do here either;
+    if (mySource->getPointMap().indexSize() == 0)
+        return;
 
+    // Reinit solver:
     if (mySolver)
     {
         flexDestroySolver(mySolver);
@@ -261,13 +326,15 @@ SOP_FlexSolver::initSystem(fpreal current_time)
         myParms  = NULL;
     }
 
-
+    // No gdp
     if (!gdp) 
         gdp = new GU_Detail;
 
+    // Create new solver:
     if (!mySolver)
     {
         mySolver  = flexCreateSolver(maxParticles,0);
+        container = flexExtCreateContainer(mySolver, maxParticles);
         myTimer   = new FlexTimers();
         myParms   = new FlexParams();
     }
@@ -306,8 +373,12 @@ SOP_FlexSolver::initSystem(fpreal current_time)
         phases[i] = fluidPhase;
     }
 
+
     // Copy source particles into self:
     copySourceParticles();
+
+    // createMesh (cloth?):
+    copyClothPrimitives();
   
     // Initialize solver with sources:
     flexSetParticles(mySolver, &particles[0], maxParticles, eFlexMemoryHost);
