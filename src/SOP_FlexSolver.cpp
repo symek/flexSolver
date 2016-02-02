@@ -1,30 +1,4 @@
-/*
- * Copyright (c) 2016
- *  Side Effects Software Inc.  All rights reserved.
- *
- * Redistribution and use of Houdini Development Kit samples in source and
- * binary forms, with or without modification, are permitted provided that the
- * following conditions are met:
- * 1. Redistributions of source code must retain the above copyright notice,
- *    this list of conditions and the following disclaimer.
- * 2. The name of Side Effects Software may not be used to endorse or
- *    promote products derived from this software without specific prior
- *    written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY SIDE EFFECTS SOFTWARE `AS IS' AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN
- * NO EVENT SHALL SIDE EFFECTS SOFTWARE BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *----------------------------------------------------------------------------
- * Simple Particle demonstration code.  Includes sample collision detection...
- */
+
 
 
 #include <flex.h>
@@ -38,7 +12,7 @@
 #include <stdlib.h> // for NULL wtf?"
 
 
-#include "SOP_SParticle.h"
+#include "SOP_FlexSolver.hpp"
 
 #include <GU/GU_Detail.h>
 #include <GU/GU_RayIntersect.h>
@@ -57,16 +31,16 @@
 #include <UT/UT_Vector3.h>
 #include <UT/UT_Vector4.h>
 
-using namespace HDK_Sample;
+using namespace SOPFlexSolver;
 
 void
 newSopOperator(OP_OperatorTable *table)
 {
     table->addOperator(new OP_Operator(
-        "hdk_sparticle",
-        "Simple Particle",
-        SOP_SParticle::myConstructor,
-        SOP_SParticle::myTemplateList,
+        "fleXSolver",
+        "FleX Solver",
+        SOP_FlexSolver::myConstructor,
+        SOP_FlexSolver::myTemplateList,
         1,      // Min required sources
         2,      // Maximum sources
         0));
@@ -82,7 +56,7 @@ static PRM_Name names[] = {
 static PRM_Default  birthRate(10);
 
 PRM_Template
-SOP_SParticle::myTemplateList[] = {
+SOP_FlexSolver::myTemplateList[] = {
     PRM_Template(PRM_INT,   1, &names[0], PRMoneDefaults),
     PRM_Template(PRM_INT_J, 1, &names[1], &birthRate),
     PRM_Template(PRM_XYZ_J, 3, &names[2]),
@@ -90,15 +64,15 @@ SOP_SParticle::myTemplateList[] = {
 };
 
 int *
-SOP_SParticle::myOffsets = 0;
+SOP_FlexSolver::myOffsets = 0;
 
 OP_Node *
-SOP_SParticle::myConstructor(OP_Network *net, const char *name, OP_Operator *op)
+SOP_FlexSolver::myConstructor(OP_Network *net, const char *name, OP_Operator *op)
 {
-    return new SOP_SParticle(net, name, op);
+    return new SOP_FlexSolver(net, name, op);
 }
 
-SOP_SParticle::SOP_SParticle(OP_Network *net, const char *name, OP_Operator *op)
+SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *op)
     : SOP_Node(net, name, op)
     , mySystem(NULL)
     , mySolver(NULL)
@@ -116,7 +90,7 @@ SOP_SParticle::SOP_SParticle(OP_Network *net, const char *name, OP_Operator *op)
     myVelocity.clear();
 }
 
-SOP_SParticle::~SOP_SParticle()
+SOP_FlexSolver::~SOP_FlexSolver()
 {
   
     flexDestroySolver(mySolver);
@@ -127,84 +101,9 @@ SOP_SParticle::~SOP_SParticle()
         delete myParms;
 }
 
-// void
-// SOP_SParticle::birthParticle()
-// {
-//     // Strictly speaking, we should be using mySource->getPointMap() for the
-//     // initial invalid point, but mySource may be NULL.
-//     GA_Offset srcptoff = GA_INVALID_OFFSET;
-//     GA_Offset vtxoff = mySystem->giveBirth();
-//     if (mySource)
-//     {
-//     if (mySourceNum >= mySource->getPointMap().indexSize())
-//         mySourceNum = 0;
-//     if (mySource->getPointMap().indexSize() > 0) // No points in the input
-//         srcptoff = mySource->pointOffset(mySourceNum);
-//     mySourceNum++; // Move on to the next source point...
-//     }
-//     GA_Offset ptoff = gdp->vertexPoint(vtxoff);
-//     if (GAisValid(srcptoff))
-//     {
-//     gdp->setPos3(ptoff, mySource->getPos3(srcptoff));
-//     if (mySourceVel.isValid())
-//             myVelocity.set(ptoff, mySourceVel.get(srcptoff));
-//     else
-//             myVelocity.set(ptoff, UT_Vector3(0, 0, 0));
-//     }
-//     else
-//     {
-//         gdp->setPos3(ptoff, SYSdrand48()-.5, SYSdrand48()-.5, SYSdrand48()-.5);
-//     myVelocity.set(ptoff, UT_Vector3(0, 0, 0));
-//     }
-//     // First index of the life variable represents how long the particle has
-//     // been alive (set to 0).
-//     myLife.set(ptoff, 0, 0);
-//     // The second index of the life variable represents how long the particle
-//     // will live (in frames)
-//     myLife.set(ptoff, 1, 30+30*SYSdrand48());
-// }
-
-// int
-// SOP_SParticle::moveParticle(GA_Offset ptoff, const UT_Vector3 &force)
-// {
-//     float life = myLife.get(ptoff, 0);
-//     float death = myLife.get(ptoff, 1);
-//     life += 1;
-//     myLife.set(ptoff, life, 0); // Store back in point
-//     if (life >= death)
-//         return 0;               // The particle should die!
-
-//     float tinc = 1./30.;        // Hardwire 1/30 of a second time inc...
-
-//     // Adjust the velocity (based on the force) - of course, the multiplies
-//     // can be pulled out of the loop...
-//     UT_Vector3 vel = myVelocity.get(ptoff);
-//     vel += tinc*force;
-//     myVelocity.set(ptoff, vel);
-
-//     // Now adjust the point positions
-
-//     if (myCollision)
-//     {
-//     UT_Vector3 dir = vel * tinc;
-
-//     // here, we only allow hits within the length of the velocity vector
-//     GU_RayInfo info(dir.normalize());
-
-//     UT_Vector3 start = gdp->getPos3(ptoff);
-//     if (myCollision->sendRay(start, dir, info) > 0)
-//         return 0;   // We hit something, so kill the particle
-//     }
-
-//     UT_Vector3 pos = gdp->getPos3(ptoff);
-//     pos += tinc*vel;
-//     gdp->setPos3(ptoff, pos);
-
-//     return 1;
-// }
 
 void
-SOP_SParticle::timeStep(fpreal now)
+SOP_FlexSolver::timeStep(fpreal now)
 {
     UT_Vector3 force(FX(now), FY(now), FZ(now));
     // int nbirth = BIRTH(now);
@@ -248,7 +147,7 @@ SOP_SParticle::timeStep(fpreal now)
 }
 
 void
-SOP_SParticle::initSystem()
+SOP_FlexSolver::initSystem()
 {
     if (!mySource)
         return;
@@ -365,7 +264,7 @@ SOP_SParticle::initSystem()
 }
 
 OP_ERROR
-SOP_SParticle::cookMySop(OP_Context &context)
+SOP_FlexSolver::cookMySop(OP_Context &context)
 {
     // We must lock our inputs before we try to access their geometry.
     // OP_AutoLockInputs will automatically unlock our inputs when we return.
@@ -442,7 +341,7 @@ SOP_SParticle::cookMySop(OP_Context &context)
 }
 
 const char *
-SOP_SParticle::inputLabel(unsigned inum) const
+SOP_FlexSolver::inputLabel(unsigned inum) const
 {
     switch (inum)
     {
@@ -451,3 +350,81 @@ SOP_SParticle::inputLabel(unsigned inum) const
     }
     return "Unknown source";
 }
+
+
+
+// void
+// SOP_SParticle::birthParticle()
+// {
+//     // Strictly speaking, we should be using mySource->getPointMap() for the
+//     // initial invalid point, but mySource may be NULL.
+//     GA_Offset srcptoff = GA_INVALID_OFFSET;
+//     GA_Offset vtxoff = mySystem->giveBirth();
+//     if (mySource)
+//     {
+//     if (mySourceNum >= mySource->getPointMap().indexSize())
+//         mySourceNum = 0;
+//     if (mySource->getPointMap().indexSize() > 0) // No points in the input
+//         srcptoff = mySource->pointOffset(mySourceNum);
+//     mySourceNum++; // Move on to the next source point...
+//     }
+//     GA_Offset ptoff = gdp->vertexPoint(vtxoff);
+//     if (GAisValid(srcptoff))
+//     {
+//     gdp->setPos3(ptoff, mySource->getPos3(srcptoff));
+//     if (mySourceVel.isValid())
+//             myVelocity.set(ptoff, mySourceVel.get(srcptoff));
+//     else
+//             myVelocity.set(ptoff, UT_Vector3(0, 0, 0));
+//     }
+//     else
+//     {
+//         gdp->setPos3(ptoff, SYSdrand48()-.5, SYSdrand48()-.5, SYSdrand48()-.5);
+//     myVelocity.set(ptoff, UT_Vector3(0, 0, 0));
+//     }
+//     // First index of the life variable represents how long the particle has
+//     // been alive (set to 0).
+//     myLife.set(ptoff, 0, 0);
+//     // The second index of the life variable represents how long the particle
+//     // will live (in frames)
+//     myLife.set(ptoff, 1, 30+30*SYSdrand48());
+// }
+
+// int
+// SOP_SParticle::moveParticle(GA_Offset ptoff, const UT_Vector3 &force)
+// {
+//     float life = myLife.get(ptoff, 0);
+//     float death = myLife.get(ptoff, 1);
+//     life += 1;
+//     myLife.set(ptoff, life, 0); // Store back in point
+//     if (life >= death)
+//         return 0;               // The particle should die!
+
+//     float tinc = 1./30.;        // Hardwire 1/30 of a second time inc...
+
+//     // Adjust the velocity (based on the force) - of course, the multiplies
+//     // can be pulled out of the loop...
+//     UT_Vector3 vel = myVelocity.get(ptoff);
+//     vel += tinc*force;
+//     myVelocity.set(ptoff, vel);
+
+//     // Now adjust the point positions
+
+//     if (myCollision)
+//     {
+//     UT_Vector3 dir = vel * tinc;
+
+//     // here, we only allow hits within the length of the velocity vector
+//     GU_RayInfo info(dir.normalize());
+
+//     UT_Vector3 start = gdp->getPos3(ptoff);
+//     if (myCollision->sendRay(start, dir, info) > 0)
+//         return 0;   // We hit something, so kill the particle
+//     }
+
+//     UT_Vector3 pos = gdp->getPos3(ptoff);
+//     pos += tinc*vel;
+//     gdp->setPos3(ptoff, pos);
+
+//     return 1;
+// }

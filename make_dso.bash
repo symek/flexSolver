@@ -1,1 +1,2 @@
- hcustom -I/home/symek/work/flex/include -I/opt/package/rez_packages/cuda/7.5.18/platform-linux/arch-x86_64/os-CentOS_Linux-7/include -L/opt/package/rez_packages/cuda/7.5.18/platform-linux/arch-x86_64/os-CentOS_Linux-7/lib64 -L/home/symek/work/flex/lib/linux64 -lcudart -lflexRelease_x64  src/SOP_SParticle.C
+ hcustom -I/home/symek/work/flex/include -I${CUDA_HOME}/include -L${CUDA_HOME}/lib64 \
+ -L/home/symek/work/flex/lib/linux64 -lcudart -lflexRelease_x64  src/SOP_FlexSolver.cpp
