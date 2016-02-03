@@ -2,7 +2,7 @@
 
 
 #include <flex.h>
-// #include <flexExt.h>
+#include <flexExt.h>
 #include <stddef.h>
 #include <iostream>
 #include <cstdio>
@@ -18,6 +18,7 @@
 
 #include <GU/GU_Detail.h>
 #include <GU/GU_RayIntersect.h>
+#include <GU/GU_PrimPoly.h>
 
 #include <GEO/GEO_PrimPart.h>
 
@@ -132,6 +133,8 @@ SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *o
             case 2:
             std::cout << "FlexError:The GPU associated with the calling thread does not meet requirements." << std::endl;
             std::cout << "An SM3.0 GPU or above is required" << std::endl;
+            case 3:
+            std::cout << "Could not initialize CUDA context." << std::endl;
             return ;
         }
     }
@@ -182,18 +185,50 @@ SOP_FlexSolver::timeStep(fpreal now)
      const float dt = 1.0 / 24.0;
      const int substeps = 1;
 
+     // New style working with solver via contailners:
+     flexExtTickContainer( container,  dt, substeps, myTimer);
+    
     // tick solver
-    flexUpdateSolver(mySolver, dt, substeps, myTimer);
+    // flexUpdateSolver(mySolver, dt, substeps, myTimer);
     // update GPU data asynchronously
   
-    flexGetParticles(mySolver, (float*)&particles[0], maxParticles, eFlexMemoryHost);
+    // float *newpart;
+    flexGetParticles(mySolver,  (float*)&particles[0], maxParticles, eFlexMemoryHost);
+    // float **normals;
+    // int   **ph;
+    // float **pp;
+    // float **a;
 
-    for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
+    // flexExtGetParticleData(container,  pp, a, ph, normals);
+
+    int *idxs = instances[0]->mParticleIndices;
+    uint nidx = instances[0]->mNumParticles;
+    std::cout << nidx << ", " << std::endl;
+
+    float * part = instances[0]->mAsset->mParticles;
+
+    uint safepart = SYSmin(nidx,  static_cast<uint>(gdp->getPointMap().indexSize()));
+
+    // float **pp = (float**)&particles[0];
+    for (uint x = 0; x < safepart; ++x)
     {
-       uint p = static_cast<int>(srcptoff) * 4;
-       const UT_Vector3 pos = UT_Vector3(particles[p], particles[p+1], particles[p+2]);
-       gdp->setPos3(srcptoff, pos);
+        const int idx = idxs[x]*4;
+        std::cout << idxs[x] << ": "<< part[idx] << ", "<<  part[idx+1] << ", " <<  part[idx+2] << std::endl;
+        // uint idx = x;
+        // std::cout << particles[idx] <<  particles[idx+1] << ", " <<  particles[idx+2] << std::endl;
+  
     }
+    std::cout << std::endl;
+
+    // for (GA_Offset srcptoff = 0; srcptoff < safepart; ++srcptoff)
+    // {
+    //    uint p = static_cast<int>(srcptoff) * 4;
+
+    //    const UT_Vector3 pos = UT_Vector3(particles[p], particles[p+1], particles[p+2]);
+    //    std::cout << particles[p] << ", "<<  particles[p+1] << ", " <<  particles[p+2] << std::endl;
+    //    // std::cout << pp[0][p] << ", "<<  pp[0][p+1] << ", " <<  pp[0][p+2] << std::endl;
+    //    gdp->setPos3(srcptoff, pos);
+    // }
 }
 
 void 
@@ -258,50 +293,47 @@ void SOP_FlexSolver::copySourceParticles(bool copyUsed=false, bool copyGdp=true)
 void SOP_FlexSolver::copyClothPrimitives()
 {
     // copy points pos first, but dont copy them into gdp. 
-    // copySourceParticles(true, false);
-    // // gdp->duplicate(*mySource);   
+    copySourceParticles(true, false);
+    gdp->duplicate(*mySource); 
+    gdp->convex();  
 
-    // GEO_Primitive *prim;
-    // uint prims = mySource->getPrimitiveMap().indexSize();
-    // uint points = mySource->getPointMap().indexSize();
-    // indices.reserve(prims*3);
+    GEO_Primitive *prim;
+    uint prims = mySource->getPrimitiveMap().indexSize();
+    uint points = mySource->getPointMap().indexSize();
+    indices.reserve(prims*3);
 
-    // // GA_PrimitiveTypeMask mask = GA_PrimitiveTypeMask();
-    // // mask.add(GA_PrimitiveTypeId(GEO_FAMILY_FACE));
+   
+    GA_FOR_MASK_PRIMITIVES(mySource, prim, GEO_PrimTypeCompat::GEOPRIMPOLY)
+    {
+        GA_Primitive::const_iterator vt;
+        for (prim->beginVertex(vt); !vt.atEnd(); ++vt)
+        {
+            const GA_Offset srcptoff = vt.getPointOffset();
+            indices.push_back(exint(srcptoff)); 
+        }
+    }
 
-    // GA_FOR_ALL_PRIMITIVES(mySource, prim)
-    // {
-    //     GA_Primitive::const_iterator vt;
-    //     for (prim->beginVertex(vt); !vt.atEnd(); ++vt)
-    //     {
-    //         const GA_Offset srcptoff = vt.getPointOffset();
-    //         indices.push_back(exint(srcptoff)); 
-    //     }
-    // }
+    FlexExtAsset* cloth;
+    float stretchStiffness =0.5f;
+    float bendStiffness = 0.5f;
+    float tetherStiffness = 0.0f;
+    float tetherGive = 0.0f;
+    float pressure = 0.0f;
 
-    // FlexExtAsset* cloth;
-    // float stretchStiffness =0.5f;
-    // float bendStiffness = 0.5f;
-    // float tetherStiffness = 0.0f;
-    // float tetherGive = 0.0f;
-    // float pressure = 0.0f;
-
-    // cloth = flexExtCreateClothFromMesh(&particles[0], points, &indices[0], prims, 
-    //     stretchStiffness, bendStiffness, tetherStiffness, tetherGive,  pressure);
+    cloth = flexExtCreateClothFromMesh(&particles[0], points, &indices[0], prims, 
+        stretchStiffness, bendStiffness, tetherStiffness, tetherGive,  pressure);
 
     // int *i;
     // flexExtAllocParticles(container, points, i);
-    // FlexExtInstance* instanceCloth;
-    // const float transform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-    // int phase = flexMakePhase(0, eFlexPhaseSelfCollide);
-    // int invMassScale = 1;
-    // instanceCloth = flexExtCreateInstance(container, cloth, transform, 0, 0, 0, phase, invMassScale);
+    FlexExtInstance* instanceCloth;
+    const float transform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    const int phase = flexMakePhase(0, eFlexPhaseSelfCollide);
+    const int invMassScale = 1;
+    instanceCloth = flexExtCreateInstance(container, cloth, transform, 0, 0, 0, phase, invMassScale);
+    if (instanceCloth)
+        instances.push_back(instanceCloth);
+    // std::cout << instanceCloth->mNumParticles <<  std::endl;
     
-
-
-
-
-
 }
 
 void
@@ -378,13 +410,13 @@ SOP_FlexSolver::initSystem(fpreal current_time)
     copySourceParticles();
 
     // createMesh (cloth?):
-    // copyClothPrimitives();
+    copyClothPrimitives();
   
     // Initialize solver with sources:
-    flexSetParticles(mySolver, &particles[0], maxParticles, eFlexMemoryHost);
-    flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
-    flexSetPhases(mySolver, &phases[0], maxParticles, eFlexMemoryHost);
-    flexSetActive(mySolver, &actives[0], maxParticles, eFlexMemoryHost);
+    // flexSetParticles(mySolver, &particles[0], maxParticles, eFlexMemoryHost);
+    // flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
+    // flexSetPhases(mySolver, &phases[0], maxParticles, eFlexMemoryHost);
+    // flexSetActive(mySolver, &actives[0], maxParticles, eFlexMemoryHost);
     
 
 }
