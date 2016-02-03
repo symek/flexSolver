@@ -70,7 +70,7 @@ private:
     FlexSolver*          mySolver; 
     FlexTimers*          myTimer; 
     FlexParams*          myParms;  
-    FlexExtContainer*    container;
+    // FlexExtContainer*    container;
     uint                 maxParticles;
     std::vector<float>   particles;
     std::vector<float>   velocities;

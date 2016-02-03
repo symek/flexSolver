@@ -2,7 +2,7 @@
 
 
 #include <flex.h>
-#include <flexExt.h>
+// #include <flexExt.h>
 #include <stddef.h>
 #include <iostream>
 #include <cstdio>
@@ -140,7 +140,7 @@ SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *o
 SOP_FlexSolver::~SOP_FlexSolver()
 {
   
-    flexExtDestroyContainer(container);
+    // flexExtDestroyContainer(container);
     flexDestroySolver(mySolver);
     flexShutdown();
     if (myTimer)
@@ -258,44 +258,44 @@ void SOP_FlexSolver::copySourceParticles(bool copyUsed=false, bool copyGdp=true)
 void SOP_FlexSolver::copyClothPrimitives()
 {
     // copy points pos first, but dont copy them into gdp. 
-    copySourceParticles(true, false);
-    // gdp->duplicate(*mySource);   
+    // copySourceParticles(true, false);
+    // // gdp->duplicate(*mySource);   
 
-    GEO_Primitive *prim;
-    uint prims = mySource->getPrimitiveMap().indexSize();
-    uint points = mySource->getPointMap().indexSize();
-    indices.reserve(prims*3);
+    // GEO_Primitive *prim;
+    // uint prims = mySource->getPrimitiveMap().indexSize();
+    // uint points = mySource->getPointMap().indexSize();
+    // indices.reserve(prims*3);
 
-    // GA_PrimitiveTypeMask mask = GA_PrimitiveTypeMask();
-    // mask.add(GA_PrimitiveTypeId(GEO_FAMILY_FACE));
+    // // GA_PrimitiveTypeMask mask = GA_PrimitiveTypeMask();
+    // // mask.add(GA_PrimitiveTypeId(GEO_FAMILY_FACE));
 
-    GA_FOR_ALL_PRIMITIVES(mySource, prim)
-    {
-        GA_Primitive::const_iterator vt;
-        for (prim->beginVertex(vt); !vt.atEnd(); ++vt)
-        {
-            const GA_Offset srcptoff = vt.getPointOffset();
-            indices.push_back(exint(srcptoff)); 
-        }
-    }
+    // GA_FOR_ALL_PRIMITIVES(mySource, prim)
+    // {
+    //     GA_Primitive::const_iterator vt;
+    //     for (prim->beginVertex(vt); !vt.atEnd(); ++vt)
+    //     {
+    //         const GA_Offset srcptoff = vt.getPointOffset();
+    //         indices.push_back(exint(srcptoff)); 
+    //     }
+    // }
 
-    FlexExtAsset* cloth;
-    float stretchStiffness =0.5f;
-    float bendStiffness = 0.5f;
-    float tetherStiffness = 0.0f;
-    float tetherGive = 0.0f;
-    float pressure = 0.0f;
+    // FlexExtAsset* cloth;
+    // float stretchStiffness =0.5f;
+    // float bendStiffness = 0.5f;
+    // float tetherStiffness = 0.0f;
+    // float tetherGive = 0.0f;
+    // float pressure = 0.0f;
 
-    cloth = flexExtCreateClothFromMesh(&particles[0], points, &indices[0], prims, 
-        stretchStiffness, bendStiffness, tetherStiffness, tetherGive,  pressure);
+    // cloth = flexExtCreateClothFromMesh(&particles[0], points, &indices[0], prims, 
+    //     stretchStiffness, bendStiffness, tetherStiffness, tetherGive,  pressure);
 
-    int *i;
-    flexExtAllocParticles(container, points, i);
-    FlexExtInstance* instanceCloth;
-    const float transform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-    int phase = flexMakePhase(0, eFlexPhaseSelfCollide);
-    int invMassScale = 1;
-    instanceCloth = flexExtCreateInstance(container, cloth, transform, 0, 0, 0, phase, invMassScale);
+    // int *i;
+    // flexExtAllocParticles(container, points, i);
+    // FlexExtInstance* instanceCloth;
+    // const float transform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    // int phase = flexMakePhase(0, eFlexPhaseSelfCollide);
+    // int invMassScale = 1;
+    // instanceCloth = flexExtCreateInstance(container, cloth, transform, 0, 0, 0, phase, invMassScale);
     
 
 
@@ -378,7 +378,7 @@ SOP_FlexSolver::initSystem(fpreal current_time)
     copySourceParticles();
 
     // createMesh (cloth?):
-    copyClothPrimitives();
+    // copyClothPrimitives();
   
     // Initialize solver with sources:
     flexSetParticles(mySolver, &particles[0], maxParticles, eFlexMemoryHost);
