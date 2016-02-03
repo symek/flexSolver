@@ -105,7 +105,7 @@ SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *o
     , mySolver(NULL)
     , myTimer(NULL)
     , myParms(NULL)
-    , maxParticles(1048576)
+    , maxParticles(1048576) // Reasonable.
 {
     // Make sure that our offsets are allocated.  Here we allow up to 32
     // parameters, no harm in over allocating.  The definition for this
@@ -339,6 +339,7 @@ SOP_FlexSolver::cookMySop(OP_Context &context)
     fpreal current_time = context.getTime();
     fpreal currframe = chman->getSample(context.getTime());
     fpreal reset = RESET(); // Find our reset frame...
+    maxParticles = MAXPARTICLES();
 
     // Set up our source information...
     mySource = inputGeo(0, context);

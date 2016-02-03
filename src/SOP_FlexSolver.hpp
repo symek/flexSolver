@@ -110,7 +110,7 @@ private:
         g_params.mShockPropagation = 0.0f;
         g_params.mRestitution = 0.0f;
         g_params.mSmoothing = 1.0f;
-        g_params.mMaxVelocity = 1000.0;
+        g_params.mMaxSpeed = 1000.0;
         g_params.mRelaxationMode = eFlexRelaxationLocal;
         g_params.mRelaxationFactor = 1.0f;
         g_params.mSolidPressure = 1.0f;
