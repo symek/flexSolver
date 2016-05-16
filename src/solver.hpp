@@ -67,7 +67,7 @@ void InitFlexParams(FlexParams &g_params)
     g_params.mShockPropagation = 0.0f;
     g_params.mRestitution = 0.0f;
     g_params.mSmoothing = 1.0f;
-    g_params.mMaxVelocity = 1000.0;
+    g_params.mMaxSpeed = 1000.0;
     g_params.mRelaxationMode = eFlexRelaxationLocal;
     g_params.mRelaxationFactor = 1.0f;
     g_params.mSolidPressure = 1.0f;
@@ -83,7 +83,7 @@ void InitFlexParams(FlexParams &g_params)
     g_params.mDiffuseSortAxis[0] = 0.0f;
     g_params.mDiffuseSortAxis[1] = 0.0f;
     g_params.mDiffuseSortAxis[2] = 0.0f;
-    g_params.mEnableCCD = false;
+    // g_params.mEnableCCD = false;
 
     // planes created after particles
     g_params.mNumPlanes = 1;
