@@ -162,7 +162,7 @@ int main(void)
     collisionGeo.convex(); // only triangles
     std::cout << "Setting max particles: " << gdp.getNumPoints() <<std::endl;
 
-    const int maxParticles = gdp.getNumPoints() + collisionGeo.getNumPoints();
+    const int maxParticles = gdp.getNumPoints();// + collisionGeo.getNumPoints();
     const int maxDiffuse = 0;
 
     FlexSolver* solver = flexCreateSolver(maxParticles, maxDiffuse);
@@ -213,50 +213,41 @@ int main(void)
 
     /*------------- Collision objects ------------- */
 
-    // std::vector<float> meshPoints;
-    // std::vector<int>   meshIndices;
-    // int npoints = 0; int npoly = 0;
-    // float lower[3]; float upper[3];
-    // meshPoints.resize(collisionGeo.getNumPoints()*3);
-    // meshIndices.resize(collisionGeo.getNumPrimitives()*3);
-    // copyMesh(collisionGeo, &meshPoints[0], &meshIndices[0], npoints, \
-    //     npoly, &lower[0], &upper[0]);
+    std::vector<float> meshPoints;
+    std::vector<int>   meshIndices;
+    int npoints = 0; int npoly = 0;
+    float lower[3]; float upper[3];
+    meshPoints.resize(collisionGeo.getNumPoints()*3);
+    meshIndices.resize(collisionGeo.getNumPrimitives()*3);
 
-    // FlexTriangleMesh *mesh = flexCreateTriangleMesh();
-    // FlexCollisionTriangleMesh colllisionMesh;
-    // colllisionMesh.mMesh = mesh;
-    // colllisionMesh.mScale = 1.0f;
-    // FlexCollisionGeometry collisionGeometry;
-    // collisionGeometry.mTriMesh = colllisionMesh;
+    copyMesh(collisionGeo, &meshPoints[0], &meshIndices[0], npoints, \
+        npoly, &lower[0], &upper[0]);
 
-    // flexUpdateTriangleMesh(mesh, &meshPoints[0], &meshIndices[0], npoints, \
-    //     npoly, &lower[0], &upper[0], eFlexMemoryHostAsync);
+    FlexTriangleMesh *mesh = flexCreateTriangleMesh();
+    FlexCollisionGeometry collisionGeometry;
+    collisionGeometry.mTriMesh.mMesh  = mesh;
+    collisionGeometry.mTriMesh.mScale = 1.0f;
+
+    flexUpdateTriangleMesh(mesh, &meshPoints[0], &meshIndices[0], npoints, \
+        npoly, &lower[0], &upper[0], eFlexMemoryHostAsync);
     
+    std::vector<FlexCollisionGeometry> collisionGeometries;
+    collisionGeometries.push_back(collisionGeometry);
 
-    
-    // // FlexCollisionSphere sphere;
-    // // sphere.mRadius = 0.5f;
-    // // FlexCollisionGeometry collider;
-    // // collider.mSphere = sphere;
-
-
-    // FlexCollisionGeometry collisionGeometries[1];
-    // collisionGeometries[0] = collisionGeometry;
-
-    // const int numGeometryEntries = 1; 
-    // float shapeAabbMaxs[4] = {0.5, 2.5, 0.5, 0};
-    // float shapeAabbMins[4] = {-0.5, 1.5, -0.5, 0};
-    // int shapeOffsets[1]; shapeOffsets[0] = 1;
-    // float shapePositions[4] = {0,2,0,0};
-    // float shapeRotations[4] = {1,0,0,0};
-    // float shapePrevPositions[4] = {0,2,0,0};
-    // float shapePrevRotations[4] = {1,0,0,0};
-    // int shapeFlags[1]; 
-    // shapeFlags[0] = flexMakeShapeFlags(eFlexShapeTriangleMesh, false);
-    // int numShapes = 1;
-    // flexSetShapes(solver, collisionGeometries, numGeometryEntries, shapeAabbMins, shapeAabbMaxs, 
-    //     shapeOffsets, shapePositions, shapeRotations, shapePrevPositions, shapePrevRotations, \
-    //         shapeFlags, numShapes, eFlexMemoryHostAsync);
+    const int numGeometryEntries = 1; 
+    float shapeAabbMaxs[4] = {0.5, 2.5, 0.5, 0};
+    float shapeAabbMins[4] = {-0.5, 1.5, -0.5, 0};
+    int shapeOffsets[1]; shapeOffsets[0] = 0;
+    float shapePositions[4] = {0,0,0,0};
+    float shapeRotations[4] = {1,0,0,0};
+    float shapePrevPositions[4] = {0,0,0,0};
+    float shapePrevRotations[4] = {1,0,0,0};
+    int shapeFlags[1]; 
+    shapeFlags[0] = flexMakeShapeFlags(eFlexShapeTriangleMesh, false);
+    int numShapes = 1;
+    flexSetShapes(solver, &collisionGeometries[0], numGeometryEntries, shapeAabbMins, shapeAabbMaxs, 
+        shapeOffsets, shapePositions, shapeRotations, shapePrevPositions, shapePrevRotations, \
+            shapeFlags, numShapes, eFlexMemoryHostAsync);
 
    
 
@@ -272,14 +263,14 @@ int main(void)
         // update positions, apply custom force fields, etc
         // ModifyParticles(particles, velocities);
         copyPointAttribs(source, true, particles_ptr, velocities_ptr);
-        // shapePositions[0]     = SYSsin(counter/24.0);
-        // shapePrevPositions[0] = SYSsin(counter-1/24.0);
+        shapePositions[0]     = SYSsin(counter/24.0);
+        shapePrevPositions[0] = SYSsin(counter-1/24.0);
 
         // update GPU data asynchronously
 
-        // flexSetShapes(solver, geometry, numGeometryEntries, shapeAabbMins, shapeAabbMaxs, 
-        // shapeOffsets, shapePositions, shapeRotations, shapePrevPositions,\
-        // shapePrevRotations, shapeFlags, numShapes, eFlexMemoryHostAsync);
+        flexSetShapes(solver,  &collisionGeometries[0], numGeometryEntries, shapeAabbMins, shapeAabbMaxs, 
+        shapeOffsets, shapePositions, shapeRotations, shapePrevPositions,\
+        shapePrevRotations, shapeFlags, numShapes, eFlexMemoryHostAsync);
     
         flexSetParticles(solver, particles_ptr, maxParticles, eFlexMemoryHostAsync);
         flexSetVelocities(solver, velocities_ptr, maxParticles, eFlexMemoryHostAsync);
