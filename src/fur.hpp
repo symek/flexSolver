@@ -16,7 +16,7 @@ void InitFlexParams(FlexParams &g_params)
         g_params.mFreeSurfaceDrag = 0.0f;
         g_params.mDrag = 0.0f;
         g_params.mLift = 0.0f;
-        g_params.mNumIterations = 2;
+        g_params.mNumIterations = 1;
         g_params.mFluidRestDistance = 0.1f; //FLUIDRESTDISTANCE(t);
         g_params.mSolidRestDistance = 0.1f; //SOLIDRESTDISTANCE(t);
         g_params.mAnisotropyScale = 1.0f;
@@ -31,7 +31,7 @@ void InitFlexParams(FlexParams &g_params)
         g_params.mSleepThreshold = 0.0f;
         g_params.mShockPropagation = 0.0f;
         g_params.mRestitution = 0.0f;
-        g_params.mSmoothing = 1.0f;
+        g_params.mSmoothing = 0.0f;
         g_params.mMaxSpeed = 1000.0;
         g_params.mRelaxationMode = eFlexRelaxationLocal;
         g_params.mRelaxationFactor = 1.0f;
@@ -51,9 +51,9 @@ void InitFlexParams(FlexParams &g_params)
         // g_params.mEnableCCD = false;
 
         g_params.mDynamicFriction = 0.1f;
-        g_params.mFluid = true;
+        g_params.mFluid = false;
         g_params.mViscosity = 0.0f;     
-        g_params.mNumIterations = 2;
+        g_params.mNumIterations = 1;
         g_params.mVorticityConfinement = 0.0f;
         g_params.mAnisotropyScale = 25.0f;
         g_params.mFluidRestDistance = g_params.mRadius*0.55f;
