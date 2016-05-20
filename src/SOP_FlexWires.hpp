@@ -191,7 +191,6 @@ private:
         g_params.mParticleFriction  = PARTICLEFRICTION(t);
         g_params.mRestitution       = RESTITUTION(t);
         g_params.mSleepThreshold    = SLEEPTHRESHOLD(t);
-        g_params.mMaxSpeed          = MAXSPEED(t);
         g_params.mShockPropagation  = SHOCKPROPAGATION(t);
         g_params.mDissipation       = DISSIPATION(t);
         g_params.mDamping           = DAMPING(t);
@@ -212,6 +211,7 @@ private:
         g_params.mPlasticThreshold = 0.0f;
         g_params.mPlasticCreep = 0.0f;
         g_params.mFluid = false;
+        // g_params.mViscosity = 0.0f;
         
         g_params.mSmoothing = 0.0f;
         g_params.mSolidPressure = 1.0f;
@@ -233,8 +233,11 @@ private:
         // add a margin for detecting contacts between particles and shapes
         if (g_params.mShapeCollisionMargin == 0.0f)
             g_params.mShapeCollisionMargin = g_params.mCollisionDistance*0.25f;
-    }
 
+        g_params.mMaxSpeed = 1000.0f;
+        // FIXME This doesnt work.
+        // g_params.mMaxSpeed = MAXSPEED(t);
+    }
 };
 
 int interpretError(const FlexError error)

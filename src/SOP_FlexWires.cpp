@@ -88,23 +88,25 @@ static PRM_Default  NUMITERATIONS_DEFAULT(3);
 static PRM_Default  MAXPARTICLES_DEFAULT(1024*1024);          
 static PRM_Default  RADIUS_DEFAULT(0.01);   
 
-static PRM_Default  SOLIDRESTDISTANCE_DEFAULT(0.0f);
-static PRM_Default  DYNAMICFRICTION_DEFAULT(0.0f);
-static PRM_Default  STATICFRICTION_DEFAULT(0.0f);
-static PRM_Default  PARTICLEFRICTION_DEFAULT(0.0f); 
-static PRM_Default  RESTITUTION_DEFAULT(0.0f);  
+static PRM_Default  SOLIDRESTDISTANCE_DEFAULT(0.001f);
+static PRM_Default  DYNAMICFRICTION_DEFAULT(0.01f);
+static PRM_Default  STATICFRICTION_DEFAULT(0.01f);
+static PRM_Default  PARTICLEFRICTION_DEFAULT(0.01f); 
+static PRM_Default  RESTITUTION_DEFAULT(0.01f);  
 
-static PRM_Default  SLEEPTHRESHOLD_DEFAULT(0.0f);
-static PRM_Default  MAXSPEED_DEFAULT(1000); 
+static PRM_Default  SLEEPTHRESHOLD_DEFAULT(0.01f);
+static PRM_Default  MAXSPEED_DEFAULT(1000.0f); 
 
-static PRM_Default  SHOCKPROPAGATION_DEFAULT(0.0f);
-static PRM_Default  DISSIPATION_DEFAULT(0.0f);
-static PRM_Default  DAMPING_DEFAULT(0.0f);
-static PRM_Default  INERTIABIAS_DEFAULT(0.0f);
+static PRM_Default  SHOCKPROPAGATION_DEFAULT(0.01f);
+static PRM_Default  DISSIPATION_DEFAULT(0.0001f);
+static PRM_Default  DAMPING_DEFAULT(0.01f);
+static PRM_Default  INERTIABIAS_DEFAULT(0.001f);
 
-static PRM_Default  COLLISIONDISTANCE_DEFAULT(0.0f);
+static PRM_Default  COLLISIONDISTANCE_DEFAULT(0.001f);
 static PRM_Default  PARTICLECOLLISIONMARGIN_DEFAULT(0.0f);
-static PRM_Default  SHAPECOLLISIONMARGIN_DEFAULT(0.0f);
+static PRM_Default  SHAPECOLLISIONMARGIN_DEFAULT(0.01f);
+
+static PRM_Range maxSpeedRange(PRM_RANGE_RESTRICTED, 0.0, PRM_RANGE_UI, 1000.0);
 
 PRM_Template
 SOP_FlexWires::myTemplateList[] = {
@@ -119,8 +121,8 @@ SOP_FlexWires::myTemplateList[] = {
     PRM_Template(PRM_FLT_J, 1, &names[7], &PARTICLEFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_FLT_J, 1, &names[8], &RESTITUTION_DEFAULT, 0, 0, 0, 0, 1, 0),
 
-    PRM_Template(PRM_FLT_J, 1, &names[9], &SLEEPTHRESHOLD_DEFAULT, 0, 0, 0, 0, 1, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[10],&MAXSPEED_DEFAULT, 0, 0, 0, 0, 1, maxSpeedHelp),
+    PRM_Template(PRM_FLT_J, 1, &names[9],  &SLEEPTHRESHOLD_DEFAULT, 0, 0, 0, 0, 1, 0),
+    // PRM_Template(PRM_FLT_J, 1, &names[10], &MAXSPEED_DEFAULT, 0, &maxSpeedRange, 0, 0, 1, maxSpeedHelp),
 
     PRM_Template(PRM_FLT_J, 1, &names[11], &SHOCKPROPAGATION_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_FLT_J, 1, &names[12], &DISSIPATION_DEFAULT, 0, 0, 0, 0, 1, 0),
