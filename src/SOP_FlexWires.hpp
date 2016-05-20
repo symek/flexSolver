@@ -109,11 +109,32 @@ private:
     // The evaluation routines use the indexed name lookup which is quite
     //  fast, yet easy to change indices (since the order of the indices
     //  doesn't have to be in sequential order...
-    int          RESETFRAME()                  { INT_PARM("resetframe", 0, 0, 0) }
-    int          MAXPARTICLES()                { INT_PARM("maxParticles", 2, 0, 0) }
+    int          RESETFRAME(fpreal t)          { INT_PARM("resetframe", 0, 0, 0) }
+    int          NUMITERATIONS(fpreal t)       { INT_PARM("numiterations", 0, 0, 0) }
+    int          MAXPARTICLES(fpreal t)        { INT_PARM("maxParticles", 2, 0, 0) }
     fpreal       RADIUS(fpreal t)              { FLT_PARM("radius", 1, 0, t) }
     fpreal       SOLIDRESTDISTANCE(fpreal t)   { FLT_PARM("solidRestDistance", 1, 0, t) }
+    fpreal       DYNAMICFRICTION(fpreal t)     { FLT_PARM("dynamicfriction", 1, 0, t) }
+    fpreal       STATICFRICTION(fpreal t)      { FLT_PARM("staticfriction", 1, 0, t) }
+    fpreal       PARTICLEFRICTION(fpreal t)    { FLT_PARM("particlefriction", 1, 0, t) }
+    fpreal       RESTITUTION(fpreal t)         { FLT_PARM("restitution", 1, 0, t) }
+    fpreal       SLEEPTHRESHOLD(fpreal t)      { FLT_PARM("sleepthreshold", 1, 0, t) }
     fpreal       MAXSPEED(fpreal t)            { FLT_PARM("maxspeed", 1, 0, t) }
+
+    fpreal       SHOCKPROPAGATION(fpreal t)    { FLT_PARM("shockpropagation", 1, 0, t) }
+    fpreal       DISSIPATION(fpreal t)         { FLT_PARM("dissipation", 1, 0, t) }
+    fpreal       DAMPING(fpreal t)             { FLT_PARM("damping", 1, 0, t) }
+    fpreal       INERTIABIAS(fpreal t)         { FLT_PARM("inertiabias", 1, 0, t) }
+
+    fpreal       COLLISIONDISTANCE(fpreal t)         { FLT_PARM("collisiondistance", 1, 0, t) }
+    fpreal       PARTICLECOLLISIONMARGIN(fpreal t)   { FLT_PARM("particlecollisionmargin", 1, 0, t) }
+    fpreal       SHAPECOLLISIONMARGIN(fpreal t)      { FLT_PARM("shapecollisionmargin", 1, 0, t) }
+
+
+
+
+
+
    
     fpreal       FX(fpreal t)   { FLT_PARM("force", 1, 0, t) }
     fpreal       FY(fpreal t)   { FLT_PARM("force", 1, 1, t) }
@@ -155,78 +176,54 @@ private:
     void initFlexParms(FlexParams &g_params, fpreal t)
     {
 
-         g_params.mGravity[0] = 0.0f;
+        g_params.mNumIterations = NUMITERATIONS(t);
+        g_params.mRelaxationMode = eFlexRelaxationLocal;
+        g_params.mRelaxationFactor = 1.0;
+        // max particles provided as func(maxpart)
+        g_params.mGravity[0] = 0.0f;
         g_params.mGravity[1] = -9.8f;
         g_params.mGravity[2] = 0.0f;
 
+        g_params.mRadius            = RADIUS(t);
+        g_params.mSolidRestDistance = SOLIDRESTDISTANCE(t);
+        g_params.mDynamicFriction   = DYNAMICFRICTION(t);
+        g_params.mStaticFriction    = STATICFRICTION(t);
+        g_params.mParticleFriction  = PARTICLEFRICTION(t);
+        g_params.mRestitution       = RESTITUTION(t);
+        g_params.mSleepThreshold    = SLEEPTHRESHOLD(t);
+        g_params.mMaxSpeed          = MAXSPEED(t);
+        g_params.mShockPropagation  = SHOCKPROPAGATION(t);
+        g_params.mDissipation       = DISSIPATION(t);
+        g_params.mDamping           = DAMPING(t);
+        g_params.mInertiaBias       = INERTIABIAS(t);
+
+        g_params.mCollisionDistance       = COLLISIONDISTANCE(t);
+        g_params.mParticleCollisionMargin = PARTICLECOLLISIONMARGIN(t);
+        g_params.mShapeCollisionMargin    = SHAPECOLLISIONMARGIN(t);
+
+        // cloth:
         g_params.mWind[0] = 0.0f;
         g_params.mWind[1] = 0.0f;
         g_params.mWind[2] = 0.0f;
-
-        g_params.mRadius = .01f; //RADIUS(t);
-        g_params.mViscosity = 0.0f;
-        g_params.mDynamicFriction = 0.0f;
-        g_params.mStaticFriction = 0.0f;
-        g_params.mParticleFriction = 0.0f; // scale friction between particles by default
-        g_params.mFreeSurfaceDrag = 0.0f;
         g_params.mDrag = 0.0f;
         g_params.mLift = 0.0f;
-        g_params.mNumIterations = 3;
-        g_params.mFluidRestDistance = 0.1f; //FLUIDRESTDISTANCE(t);
-        g_params.mSolidRestDistance = 0.1f; //SOLIDRESTDISTANCE(t);
-        g_params.mAnisotropyScale = 1.0f;
-        g_params.mDissipation = 0.0f;
-        g_params.mDamping = 0.0f;
-        g_params.mParticleCollisionMargin = 0.01f;
-        g_params.mShapeCollisionMargin = 0.1f;
-        g_params.mCollisionDistance = 0.01f;
+
+
         g_params.mPlasticThreshold = 0.0f;
         g_params.mPlasticCreep = 0.0f;
         g_params.mFluid = false;
-        g_params.mSleepThreshold = 0.0f;
-        g_params.mShockPropagation = 0.0f;
-        g_params.mRestitution = 0.0f;
+        
         g_params.mSmoothing = 0.0f;
-        g_params.mMaxSpeed = 1000.0;
-        g_params.mRelaxationMode = eFlexRelaxationLocal;
-        g_params.mRelaxationFactor = 1.0f;
         g_params.mSolidPressure = 1.0f;
         g_params.mAdhesion = 0.0f;
         g_params.mCohesion = 0.025f;
         g_params.mSurfaceTension = 0.0f;
-        g_params.mVorticityConfinement = 0.0f;
-        g_params.mBuoyancy = 1.0f;
-        g_params.mDiffuseThreshold = 100.0f;
-        g_params.mDiffuseBuoyancy = 1.0f;
-        g_params.mDiffuseDrag = 0.8f;
-        g_params.mDiffuseBallistic = 16;
-        g_params.mDiffuseSortAxis[0] = 0.0f;
-        g_params.mDiffuseSortAxis[1] = 0.0f;
-        g_params.mDiffuseSortAxis[2] = 0.0f;
         g_params.mInertiaBias = 0.001f;
-        // g_params.mEnableCCD = false;
-
-        g_params.mDynamicFriction = 0.1f;
-        g_params.mFluid = false;
-        g_params.mViscosity = 0.0f;     
-        g_params.mVorticityConfinement = 0.0f;
-        g_params.mAnisotropyScale = 25.0f;
-        g_params.mFluidRestDistance = g_params.mRadius*0.55f;
-
-
-        // by default solid particles use the maximum radius
-        if (g_params.mFluid && g_params.mSolidRestDistance == 0.0f)
-            g_params.mSolidRestDistance = g_params.mFluidRestDistance;
-        else
-            g_params.mSolidRestDistance = g_params.mRadius;
 
         // collision distance with shapes half the radius
         if (g_params.mCollisionDistance == 0.0f)
         {
             g_params.mCollisionDistance = g_params.mRadius*0.5f;
-
-            if (g_params.mFluid)
-                g_params.mCollisionDistance = g_params.mFluidRestDistance*0.5f;
         }
 
         // default particle friction to 10% of shape friction
@@ -236,91 +233,6 @@ private:
         // add a margin for detecting contacts between particles and shapes
         if (g_params.mShapeCollisionMargin == 0.0f)
             g_params.mShapeCollisionMargin = g_params.mCollisionDistance*0.25f;
-    // }
-    //     g_params.mGravity[0] = 0.0f;
-    //     g_params.mGravity[1] = -9.8f;
-    //     g_params.mGravity[2] = 0.0f;
-
-    //     g_params.mWind[0] = 0.0f;
-    //     g_params.mWind[1] = 0.0f;
-    //     g_params.mWind[2] = 0.0f;
-
-    //     g_params.mRadius = RADIUS(t);
-    //     g_params.mViscosity = 0.0f;
-    //     g_params.mDynamicFriction = 0.1f;
-    //     g_params.mStaticFriction = 0.0f;
-    //     g_params.mParticleFriction = 0.0f; // scale friction between particles by default
-    //     g_params.mFreeSurfaceDrag = 0.0f;
-    //     g_params.mDrag = 0.0f;
-    //     g_params.mLift = 0.0f;
-    //     g_params.mNumIterations = 1;
-    //     // g_params.mFluidRestDistance = FLUIDRESTDISTANCE(t);
-    //     g_params.mSolidRestDistance = SOLIDRESTDISTANCE(t);
-
-    //     g_params.mAnisotropyScale = 1.0f;
-    //     g_params.mAnisotropyMin = 0.1f;
-    //     g_params.mAnisotropyMax = 2.0f;
-    //     g_params.mSmoothing = 1.0f;
-
-    //     g_params.mDissipation = 0.0f;
-    //     g_params.mDamping = 0.0f;
-    //     g_params.mParticleCollisionMargin = 0.0f;
-    //     g_params.mShapeCollisionMargin = 0.0f;
-    //     g_params.mCollisionDistance = 0.0f;
-    //     g_params.mPlasticThreshold = 0.0f;
-    //     g_params.mPlasticCreep = 0.0f;
-
-    //     g_params.mFluid = false;
-
-    //     g_params.mSleepThreshold = 0.0f;
-    //     g_params.mShockPropagation = 0.0f;
-    //     g_params.mRestitution = 0.0f;
-
-    //     g_params.mMaxSpeed = MAXSPEED(t);
-    //     g_params.mRelaxationMode = eFlexRelaxationLocal;
-    //     g_params.mRelaxationFactor = 1.0f;
-
-    //     g_params.mSolidPressure = 1.0f;
-    //     g_params.mAdhesion = 0.0f;
-    //     g_params.mCohesion = 0.025f;
-    //     g_params.mSurfaceTension = 0.0f;
-    //     g_params.mVorticityConfinement = 0.0f;
-    //     g_params.mBuoyancy = 1.0f;
-    //     g_params.mDiffuseThreshold = 100.0f;
-    //     g_params.mDiffuseBuoyancy = 1.0f;
-    //     g_params.mDiffuseDrag = 0.8f;
-    //     g_params.mDiffuseBallistic = 16;
-    //     g_params.mDiffuseSortAxis[0] = 0.0f;
-    //     g_params.mDiffuseSortAxis[1] = 0.0f;
-    //     g_params.mDiffuseSortAxis[2] = 0.0f;
-    //     g_params.mDiffuseLifetime = 2.0f;
-    //     g_params.mInertiaBias = 0.001f;
-
-    //     g_params.mNumPlanes = 0;
-
-
-    //     // by default solid particles use the maximum radius
-    //     if (g_params.mFluid && g_params.mSolidRestDistance == 0.0f)
-    //         g_params.mSolidRestDistance = g_params.mFluidRestDistance;
-    //     else
-    //         g_params.mSolidRestDistance = g_params.mRadius;
-
-    //     // collision distance with shapes half the radius
-    //     if (g_params.mCollisionDistance == 0.0f)
-    //     {
-    //         g_params.mCollisionDistance = g_params.mRadius*0.5f;
-
-    //         if (g_params.mFluid)
-    //             g_params.mCollisionDistance = g_params.mFluidRestDistance*0.5f;
-    //     }
-
-    //     // default particle friction to 10% of shape friction
-    //     if (g_params.mParticleFriction == 0.0f)
-    //         g_params.mParticleFriction = g_params.mDynamicFriction*0.1f; 
-
-    //     // add a margin for detecting contacts between particles and shapes
-    //     if (g_params.mShapeCollisionMargin == 0.0f)
-    //         g_params.mShapeCollisionMargin = g_params.mCollisionDistance*0.25f;
     }
 
 };
@@ -345,9 +257,9 @@ int interpretError(const FlexError error)
     return 4;
 }
 
-void copyPointAttribs(const GU_Detail *source, std::vector<float> &particles, 
-                      std::vector<float>  &velocities, std::vector<int> &actives, 
-                      const float pinToAnimation=0)
+
+void copyPointAttribs(const GU_Detail *source, float* particles_ptr, 
+    float* velocities_ptr, int* actives, const float pinToAnimation=0)
 {
     GA_ROHandleV3  vel_handle(source, GA_ATTRIB_POINT, "v");
     GA_ROHandleF   pin_handle(source, GA_ATTRIB_POINT, "pintoanimation");
@@ -379,35 +291,32 @@ void copyPointAttribs(const GU_Detail *source, std::vector<float> &particles,
 
         const UT_Vector3 pos = source->getPos3(ptoff);
 
-        UT_Vector3 delta(particles[4*offset],
-                         particles[4*offset+1],
-                         particles[4*offset+2]);
-        // FIXME: Partial pinning doesn't work for now. 
-        // delta -= (delta - pos)*pinValue;
-        if (pinValue)
-            delta = pos;
+        UT_Vector3 delta(particles_ptr[4*offset],
+                         particles_ptr[4*offset+1],
+                         particles_ptr[4*offset+2]);
 
-        particles[4*offset]   = delta.x();
-        particles[4*offset+1] = delta.y();
-        particles[4*offset+2] = delta.z();
-        particles[4*offset+3] = masValue;
+        delta -= (delta - pos)*pinValue;
+        particles_ptr[4*offset]   = delta.x();
+        particles_ptr[4*offset+1] = delta.y();
+        particles_ptr[4*offset+2] = delta.z();
+        particles_ptr[4*offset+3] = masValue;
         
-        if (vel_valid) {
-            const UT_Vector3 vel    = vel_handle.get(ptoff);
-            // NOTE: We'd better initialize velocities...
-            velocities[3*offset]   += static_cast<float>(vel.x());//*pinValue; // No parial pinning 
-            velocities[3*offset+1] += static_cast<float>(vel.y());//*pinValue;
-            velocities[3*offset+2] += static_cast<float>(vel.z());//*pinValue;
-
-        if (pinValue == 1.0f) {
-            velocities[3*offset]   = 0.0f; 
-            velocities[3*offset+1] = 0.0f;
-            velocities[3*offset+2] = 0.0f;
-
-            }
+        if (pinValue == 1.0) {
+            velocities_ptr[3*offset]   = 0.0f; // We better initialize velocities...
+            velocities_ptr[3*offset+1] = 0.0f;
+            velocities_ptr[3*offset+2] = 0.0f; 
         }
+        // else {
+        //     if (vel_valid) {
+        //         const UT_Vector3 vel    = vel_handle.get(ptoff);
+        //         velocities_ptr[3*offset]   += vel.x();//*pinValue; // We better initialize velocities...
+        //         velocities_ptr[3*offset+1] += vel.y();//*pinValue;
+        //         velocities_ptr[3*offset+2] += vel.z();//*pinValue;
+        //     }
+        // }
     }  
 }
+
 
 void updatePointAttribs(const GU_Detail *source, std::vector<float> &particles, 
                       std::vector<float>  &velocities, std::vector<int> &actives, 

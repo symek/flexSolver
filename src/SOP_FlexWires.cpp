@@ -55,20 +55,26 @@ newSopOperator(OP_OperatorTable *table)
 
 // The names here have to match the inline evaluation functions
 static PRM_Name names[] = {
-    PRM_Name("resetframe",       "Reset Frame"),
-    PRM_Name("maxParticles",     "Max Particles"),
-    PRM_Name("numIterations",    "Solver iterations"),
-    PRM_Name("radius",           "Interact radius"),
-    PRM_Name("solidRestDistance","Non-fluid particles radius"),
-    PRM_Name("maxspeed",          "Max speed."),
-    //PRM_Name("fluidRestDistance","Rest density"),
+    PRM_Name("resetframe", "Reset Frame"),
+    PRM_Name("numiterations", "Num Iterations"),
+    PRM_Name("maxParticles", "Max Particles"),
+    PRM_Name("radius", "Radius"),
+    PRM_Name("solidRestDistance", "Solid Restdistance"),
+    PRM_Name("dynamicfriction", "Dynamic Friction"),
+    PRM_Name("staticfriction", "Static Frition"),
+    PRM_Name("particlefriction", "Particle Friction"),
+    PRM_Name("restitution", "Restitution"),
+    PRM_Name("sleepthreshold", "Sleep Threshold"),
+    PRM_Name("maxspeed", "Max Speed"),
+    PRM_Name("shockpropagation", "Shock Propagation"),
+    PRM_Name("dissipation", "Dissipation"),
+    PRM_Name("damping", "Damping"),
+    PRM_Name("inertiabias", "Inertia Bias"),
+    PRM_Name("collisiondistance", "Collision Distance"),
+    PRM_Name("particlecollisionmargin", "Particle Collisionmargin"),
+    PRM_Name("shapecollisionmargin", "Shape Collisionmargin"),
     PRM_Name("force",        "Force"),
 };
-
-static PRM_Default  MAXPARTICLESDEF(1024*1024);
-static PRM_Default  RADIUSDEF(0.05);
-static PRM_Default  MAXSPEEDEF(1000);
-static PRM_Default  RESTDISTANCE(0.1);
 
 static const char* resetFrameHelp        = "Set frame when simulation will reset.";
 static const char* maxParticlesHelp      = "Maximum number of particles to be created on the GPU.";  
@@ -77,17 +83,55 @@ static const char* radiusHelp            = "The maximum interaction radius for p
 static const char* solidRestDistanceHelp = "The distance non-fluid particles attempt to maintain from each other, must be in the range (0, radius].";  
 static const char* maxSpeedHelp          = "The distance fluid particles are spaced at the rest density, must be in the range (0, radius], for fluids this should generally be 50-70% of mRadius, for rigids this can simply be the same as the particle radius.";      
 
+static PRM_Default  RESETFRAME_DEFAULT(1);            
+static PRM_Default  NUMITERATIONS_DEFAULT(3);         
+static PRM_Default  MAXPARTICLES_DEFAULT(1024*1024);          
+static PRM_Default  RADIUS_DEFAULT(0.01);   
+
+static PRM_Default  SOLIDRESTDISTANCE_DEFAULT(0.0f);
+static PRM_Default  DYNAMICFRICTION_DEFAULT(0.0f);
+static PRM_Default  STATICFRICTION_DEFAULT(0.0f);
+static PRM_Default  PARTICLEFRICTION_DEFAULT(0.0f); 
+static PRM_Default  RESTITUTION_DEFAULT(0.0f);  
+
+static PRM_Default  SLEEPTHRESHOLD_DEFAULT(0.0f);
+static PRM_Default  MAXSPEED_DEFAULT(1000); 
+
+static PRM_Default  SHOCKPROPAGATION_DEFAULT(0.0f);
+static PRM_Default  DISSIPATION_DEFAULT(0.0f);
+static PRM_Default  DAMPING_DEFAULT(0.0f);
+static PRM_Default  INERTIABIAS_DEFAULT(0.0f);
+
+static PRM_Default  COLLISIONDISTANCE_DEFAULT(0.0f);
+static PRM_Default  PARTICLECOLLISIONMARGIN_DEFAULT(0.0f);
+static PRM_Default  SHAPECOLLISIONMARGIN_DEFAULT(0.0f);
 
 PRM_Template
 SOP_FlexWires::myTemplateList[] = {
     PRM_Template(PRM_INT,   1, &names[0], PRMoneDefaults, 0, 0, 0, 0, 1, resetFrameHelp),
-    PRM_Template(PRM_INT_J, 1, &names[1], &MAXPARTICLESDEF, 0, 0, 0, 0, 1, maxParticlesHelp),
-    PRM_Template(PRM_INT_J, 1, &names[2], PRMtwoDefaults, 0, 0, 0, 0, 1, numIterationsHelp),
-    PRM_Template(PRM_FLT_J, 1, &names[3], &RADIUSDEF, 0, 0, 0, 0, 1, radiusHelp),
-    PRM_Template(PRM_FLT_J, 1, &names[4], &RESTDISTANCE, 0, 0, 0, 0, 1, solidRestDistanceHelp),
-    PRM_Template(PRM_FLT_J, 1, &names[5], &MAXSPEEDEF, 0, 0, 0, 0, 1, maxSpeedHelp),
+    PRM_Template(PRM_INT,   1, &names[1], &NUMITERATIONS_DEFAULT, 0, 0, 0, 0, 1, numIterationsHelp),
+    PRM_Template(PRM_INT_J, 1, &names[2], &MAXPARTICLES_DEFAULT, 0, 0, 0, 0, 1, maxParticlesHelp),
+    PRM_Template(PRM_FLT_J, 1, &names[3], &RADIUS_DEFAULT, 0, 0, 0, 0, 1, radiusHelp),
 
-    PRM_Template(PRM_XYZ_J, 3, &names[6]),
+    PRM_Template(PRM_FLT_J, 1, &names[4], &SOLIDRESTDISTANCE_DEFAULT, 0, 0, 0, 0, 1, solidRestDistanceHelp),
+    PRM_Template(PRM_FLT_J, 1, &names[5], &DYNAMICFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[6], &STATICFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[7], &PARTICLEFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[8], &RESTITUTION_DEFAULT, 0, 0, 0, 0, 1, 0),
+
+    PRM_Template(PRM_FLT_J, 1, &names[9], &SLEEPTHRESHOLD_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[10],&MAXSPEED_DEFAULT, 0, 0, 0, 0, 1, maxSpeedHelp),
+
+    PRM_Template(PRM_FLT_J, 1, &names[11], &SHOCKPROPAGATION_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[12], &DISSIPATION_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[13], &DAMPING_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[14], &INERTIABIAS_DEFAULT, 0, 0, 0, 0, 1, 0),
+
+    PRM_Template(PRM_FLT_J, 1, &names[15], &COLLISIONDISTANCE_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[16], &PARTICLECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_FLT_J, 1, &names[17], &SHAPECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
+
+    //PRM_Template(PRM_XYZ_J, 3, &names[6]),
     PRM_Template(),
 };
 
@@ -209,7 +253,7 @@ SOP_FlexWires::initSystem(fpreal currentTime)
 
     // Copy source particles into self:
     DEBUG_PRINT("%s\n", "Before coping points and springs attribs." );
-    copyPointAttribs(gdp, myParticles, myVelocities, myActives, -1.0);
+    copyPointAttribs(gdp, &myParticles[0], &myVelocities[0], &myActives[0], -1.0);
     copySpringAttribs(gdp, mySpringIndices, mySpringLengths, mySpringCoefficients);
   
     // Initialize solver with sources:
@@ -240,10 +284,15 @@ SOP_FlexWires::timeStep(fpreal now)
      const float dt  = 1.0f/ OPgetDirector()->getChannelManager()->getSamplesPerSec();
      const int substeps = 1;
 
-     DEBUG_PRINT("%s:, Now: %f, timestep: %f\n", "timeStep before copyPointAttribs.", now, dt );
-     // update positions, apply custom force fields, etc
-    updatePointAttribs(mySource, myParticles, myVelocities, myActives, 1.0);
-    // flexSetActive(mySolver, &myActives[0], myMaxParticles, eFlexMemoryHostAsync);
+    // Set parameters for solver:
+    DEBUG_PRINT("%s\n", "Before initFlexParms inside timeStep." );
+    initFlexParms(*myParms, now);
+    flexSetParams(mySolver, myParms);
+
+    DEBUG_PRINT("%s:, Now: %f, timestep: %f\n", "timeStep before copyPointAttribs.", now, dt );
+    // update positions, apply custom force fields, etc
+    copyPointAttribs(mySource, &myParticles[0], &myVelocities[0], &myActives[0], 1.0);
+    // flexSetActive(mySolver, &myActives[0], myMaxParticles, eFlexMemoryHost);
 
     // update GPU data asynchronously
     // createCollisionMesh(solver, collisionGeo, counter);
@@ -313,7 +362,7 @@ SOP_FlexWires::cookMySop(OP_Context &context)
     // This is the frame that we're cooking at...
     fpreal currentTime  = context.getTime();
     fpreal currentFrame = chman->getSample(context.getTime());
-    fpreal resetFrame   = RESETFRAME(); // Find our reset frame...
+    fpreal resetFrame   = RESETFRAME(currentFrame); // Find our reset frame...
     //myMaxParticles      = MAXPARTICLES();
 
     // // Set up our source information...
@@ -385,80 +434,3 @@ SOP_FlexWires::inputLabel(unsigned inum) const
     return "Unknown source";
 }
 
-
-
-// void
-// SOP_SParticle::birthParticle()
-// {
-//     // Strictly speaking, we should be using mySource->getPointMap() for the
-//     // initial invalid point, but mySource may be NULL.
-//     GA_Offset srcptoff = GA_INVALID_OFFSET;
-//     GA_Offset vtxoff = mySystem->giveBirth();
-//     if (mySource)
-//     {
-//     if (mySourceNum >= mySource->getPointMap().indexSize())
-//         mySourceNum = 0;
-//     if (mySource->getPointMap().indexSize() > 0) // No points in the input
-//         srcptoff = mySource->pointOffset(mySourceNum);
-//     mySourceNum++; // Move on to the next source point...
-//     }
-//     GA_Offset ptoff = gdp->vertexPoint(vtxoff);
-//     if (GAisValid(srcptoff))
-//     {
-//     gdp->setPos3(ptoff, mySource->getPos3(srcptoff));
-//     if (mySourceVel.isValid())
-//             myVelocity.set(ptoff, mySourceVel.get(srcptoff));
-//     else
-//             myVelocity.set(ptoff, UT_Vector3(0, 0, 0));
-//     }
-//     else
-//     {
-//         gdp->setPos3(ptoff, SYSdrand48()-.5, SYSdrand48()-.5, SYSdrand48()-.5);
-//     myVelocity.set(ptoff, UT_Vector3(0, 0, 0));
-//     }
-//     // First index of the life variable represents how long the particle has
-//     // been alive (set to 0).
-//     myLife.set(ptoff, 0, 0);
-//     // The second index of the life variable represents how long the particle
-//     // will live (in frames)
-//     myLife.set(ptoff, 1, 30+30*SYSdrand48());
-// }
-
-// int
-// SOP_SParticle::moveParticle(GA_Offset ptoff, const UT_Vector3 &force)
-// {
-//     float life = myLife.get(ptoff, 0);
-//     float death = myLife.get(ptoff, 1);
-//     life += 1;
-//     myLife.set(ptoff, life, 0); // Store back in point
-//     if (life >= death)
-//         return 0;               // The particle should die!
-
-//     float tinc = 1./30.;        // Hardwire 1/30 of a second time inc...
-
-//     // Adjust the velocity (based on the force) - of course, the multiplies
-//     // can be pulled out of the loop...
-//     UT_Vector3 vel = myVelocity.get(ptoff);
-//     vel += tinc*force;
-//     myVelocity.set(ptoff, vel);
-
-//     // Now adjust the point positions
-
-//     if (myCollision)
-//     {
-//     UT_Vector3 dir = vel * tinc;
-
-//     // here, we only allow hits within the length of the velocity vector
-//     GU_RayInfo info(dir.normalize());
-
-//     UT_Vector3 start = gdp->getPos3(ptoff);
-//     if (myCollision->sendRay(start, dir, info) > 0)
-//         return 0;   // We hit something, so kill the particle
-//     }
-
-//     UT_Vector3 pos = gdp->getPos3(ptoff);
-//     pos += tinc*vel;
-//     gdp->setPos3(ptoff, pos);
-
-//     return 1;
-// }
