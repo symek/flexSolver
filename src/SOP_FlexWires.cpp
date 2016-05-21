@@ -56,9 +56,9 @@ newSopOperator(OP_OperatorTable *table)
 // The names here have to match the inline evaluation functions
 static PRM_Name names[] = {
     PRM_Name("resetframe", "Reset Frame"),
-    PRM_Name("numiterations", "Num Iterations"),
+    PRM_Name("numiterations", "Number of Iterations"),
     PRM_Name("maxParticles", "Max Particles"),
-    PRM_Name("radius", "Radius"),
+    PRM_Name("radius", "Particles Radius"),
     PRM_Name("solidRestDistance", "Solid Restdistance"),
     PRM_Name("dynamicfriction", "Dynamic Friction"),
     PRM_Name("staticfriction", "Static Frition"),
@@ -71,8 +71,10 @@ static PRM_Name names[] = {
     PRM_Name("damping", "Damping"),
     PRM_Name("inertiabias", "Inertia Bias"),
     PRM_Name("collisiondistance", "Collision Distance"),
-    PRM_Name("particlecollisionmargin", "Particle Collisionmargin"),
-    PRM_Name("shapecollisionmargin", "Shape Collisionmargin"),
+    PRM_Name("particlecollisionmargin", "Particle Collision Margin"),
+    PRM_Name("shapecollisionmargin", "Shape Collision Margin"),
+    PRM_Name("numsubstep", "Number of substeps"),
+    PRM_Name("maxspringwires", "Springs per vertex"),
     PRM_Name("force",        "Force"),
 };
 
@@ -84,7 +86,8 @@ static const char* solidRestDistanceHelp = "The distance non-fluid particles att
 static const char* maxSpeedHelp          = "The distance fluid particles are spaced at the rest density, must be in the range (0, radius], for fluids this should generally be 50-70% of mRadius, for rigids this can simply be the same as the particle radius.";      
 
 static PRM_Default  RESETFRAME_DEFAULT(1);            
-static PRM_Default  NUMITERATIONS_DEFAULT(3);         
+static PRM_Default  NUMITERATIONS_DEFAULT(3);
+static PRM_Default  NUMSUBSTEPS_DEFAULT(2);
 static PRM_Default  MAXPARTICLES_DEFAULT(1024*1024);          
 static PRM_Default  RADIUS_DEFAULT(0.01);   
 
@@ -105,13 +108,16 @@ static PRM_Default  INERTIABIAS_DEFAULT(0.001f);
 static PRM_Default  COLLISIONDISTANCE_DEFAULT(0.001f);
 static PRM_Default  PARTICLECOLLISIONMARGIN_DEFAULT(0.0f);
 static PRM_Default  SHAPECOLLISIONMARGIN_DEFAULT(0.01f);
+static PRM_Default  MAXSPRINGWIRES_DEFAULT(1); 
 
 static PRM_Range maxSpeedRange(PRM_RANGE_RESTRICTED, 0.0, PRM_RANGE_UI, 1000.0);
+static PRM_Range maxSpringWiresRange(PRM_RANGE_RESTRICTED, 1, PRM_RANGE_UI, 10);
 
 PRM_Template
 SOP_FlexWires::myTemplateList[] = {
     PRM_Template(PRM_INT,   1, &names[0], PRMoneDefaults, 0, 0, 0, 0, 1, resetFrameHelp),
     PRM_Template(PRM_INT,   1, &names[1], &NUMITERATIONS_DEFAULT, 0, 0, 0, 0, 1, numIterationsHelp),
+    PRM_Template(PRM_INT,   1, &names[18],&NUMSUBSTEPS_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_INT_J, 1, &names[2], &MAXPARTICLES_DEFAULT, 0, 0, 0, 0, 1, maxParticlesHelp),
     PRM_Template(PRM_FLT_J, 1, &names[3], &RADIUS_DEFAULT, 0, 0, 0, 0, 1, radiusHelp),
 
@@ -132,6 +138,7 @@ SOP_FlexWires::myTemplateList[] = {
     PRM_Template(PRM_FLT_J, 1, &names[15], &COLLISIONDISTANCE_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_FLT_J, 1, &names[16], &PARTICLECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_FLT_J, 1, &names[17], &SHAPECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
+    PRM_Template(PRM_INT,   1, &names[19], &MAXSPRINGWIRES_DEFAULT, 0, &maxSpringWiresRange, 0, 0, 1, 0),
 
     //PRM_Template(PRM_XYZ_J, 3, &names[6]),
     PRM_Template(),
@@ -200,7 +207,7 @@ SOP_FlexWires::initSystem(fpreal currentTime)
     int nSourcePoints  = mySource->getNumPoints();
     int maxParticles   = nSourcePoints; //SYSmin(MAXPARTICLES(), nSourcePoints);
     myMaxParticles     = maxParticles; // FIXME: clean it.
-    DEBUG_PRINT("%s: %i\n", "myMaxParticles", maxParticles);    
+    // DEBUG_PRINT("%s: %i\n", "myMaxParticles", maxParticles);    
 
     if (mySolver) {
         flexDestroySolver(mySolver);
@@ -228,15 +235,15 @@ SOP_FlexWires::initSystem(fpreal currentTime)
     mySpringLengths.resize(0);
     mySpringCoefficients.resize(0);
 
-    DEBUG_PRINT("%s\n", "After reseting containers and solver.");
+    // DEBUG_PRINT("%s\n", "After reseting containers and solver.");
   
     // Set parameters for solver:
-    DEBUG_PRINT("%s\n", "Before initFlexParms." );
+    // DEBUG_PRINT("%s\n", "Before initFlexParms." );
     initFlexParms(*myParms, currentTime);
     flexSetParams(mySolver, myParms);
 
 
-    DEBUG_PRINT("%s\n", "Before resizing containers." );
+    // DEBUG_PRINT("%s\n", "Before resizing containers." );
     // alloc CUDA pinned host memory to allow asynchronous memory transfers
     myParticles.resize(maxParticles*4, 0.0f);
     myVelocities.resize(maxParticles*3, 0.0f);
@@ -247,19 +254,19 @@ SOP_FlexWires::initSystem(fpreal currentTime)
         myActives[i] = i;
     }
 
-    uint numSprings = getNumSprings(mySource);
-    DEBUG_PRINT("%s: %i\n", "NumSprings", numSprings);       
+    uint numSprings = getNumSprings(mySource, myMaxSpringWires);
+    // DEBUG_PRINT("%s: %i\n", "NumSprings", numSprings);       
     mySpringIndices.resize(numSprings*2, 0);
     mySpringLengths.resize(numSprings, 0.0f);
     mySpringCoefficients.resize(numSprings, 0.0f);
 
     // Copy source particles into self:
-    DEBUG_PRINT("%s\n", "Before coping points and springs attribs." );
+    // DEBUG_PRINT("%s\n", "Before coping points and springs attribs." );
     copyPointAttribs(gdp, &myParticles[0], &myVelocities[0], &myActives[0], -1.0);
-    copySpringAttribs(gdp, mySpringIndices, mySpringLengths, mySpringCoefficients);
+    copySpringAttribs(gdp, mySpringIndices, mySpringLengths, mySpringCoefficients, myMaxSpringWires);
   
     // Initialize solver with sources:
-    DEBUG_PRINT("%s\n", "before flexSetParticles etc." );
+    // DEBUG_PRINT("%s\n", "before flexSetParticles etc." );
     flexSetActive(mySolver, &myActives[0], maxParticles, eFlexMemoryHost);
     flexSetParticles(mySolver, &myParticles[0], maxParticles, eFlexMemoryHost);
     flexSetVelocities(mySolver, &myVelocities[0], maxParticles, eFlexMemoryHost);
@@ -278,7 +285,7 @@ SOP_FlexWires::timeStep(fpreal now)
     if (error() >= UT_ERROR_ABORT)
         return;
 
-    DEBUG_PRINT("%s\n", "timeStep before initFlexParms." );
+    // DEBUG_PRINT("%s\n", "timeStep before initFlexParms." );
     // initFlexParms(*myParms, now);
     // flexSetParams(mySolver, myParms);
     // flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
@@ -287,36 +294,36 @@ SOP_FlexWires::timeStep(fpreal now)
      const int substeps = 1;
 
     // Set parameters for solver:
-    DEBUG_PRINT("%s\n", "Before initFlexParms inside timeStep." );
+    // DEBUG_PRINT("%s\n", "Before initFlexParms inside timeStep." );
     initFlexParms(*myParms, now);
     flexSetParams(mySolver, myParms);
 
-    DEBUG_PRINT("%s:, Now: %f, timestep: %f\n", "timeStep before copyPointAttribs.", now, dt );
+    // DEBUG_PRINT("%s:, Now: %f, timestep: %f\n", "timeStep before copyPointAttribs.", now, dt );
     // update positions, apply custom force fields, etc
     copyPointAttribs(mySource, &myParticles[0], &myVelocities[0], &myActives[0], 1.0);
     // flexSetActive(mySolver, &myActives[0], myMaxParticles, eFlexMemoryHost);
 
     // update GPU data asynchronously
     // createCollisionMesh(solver, collisionGeo, counter);
-    DEBUG_PRINT("%s\n", "timeStep before flexSetParticles." );
+    // DEBUG_PRINT("%s\n", "timeStep before flexSetParticles." );
     flexSetParticles(mySolver,  &myParticles[0],  myMaxParticles, eFlexMemoryHost);
     flexSetVelocities(mySolver, &myVelocities[0], myMaxParticles, eFlexMemoryHost);
-    flexSetSprings(mySolver, &mySpringIndices[0], &mySpringLengths[0], &mySpringCoefficients[0], 
-        mySpringLengths.size(), eFlexMemoryHost);
+    // flexSetSprings(mySolver, &mySpringIndices[0], &mySpringLengths[0], &mySpringCoefficients[0], 
+        // mySpringLengths.size(), eFlexMemoryHost);
         
     // tick solver
-    DEBUG_PRINT("%s\n", "timeStep before flexUpdateSolver." );
-    flexUpdateSolver(mySolver, dt, substeps, myTimer);
+    // DEBUG_PRINT("%s\n", "timeStep before flexUpdateSolver." );
+    flexUpdateSolver(mySolver, dt, mySolverSubSteps, myTimer);
     // update GPU data asynchronously
   
-    DEBUG_PRINT("%s\n", "timeStep before flexGetParticles." );
+    // DEBUG_PRINT("%s\n", "timeStep before flexGetParticles." );
     flexGetParticles(mySolver, &myParticles[0], myMaxParticles, eFlexMemoryHost);
     flexGetVelocities(mySolver,&myVelocities[0],myMaxParticles, eFlexMemoryHost);
 
-    DEBUG_PRINT("%s\n", "timeStep before flexSetFence." );
+    // DEBUG_PRINT("%s\n", "timeStep before flexSetFence." );
     // flexSetFence();
 
-    DEBUG_PRINT("%s\n", "timeStep before copy data back to Houdini." );
+    // DEBUG_PRINT("%s\n", "timeStep before copy data back to Houdini." );
     GA_RWHandleV3  vel_handle(gdp, GA_ATTRIB_POINT, "v");
     GA_Offset ptoff;
     GA_FOR_ALL_PTOFF(gdp, ptoff) {
@@ -333,7 +340,7 @@ SOP_FlexWires::timeStep(fpreal now)
 
         }
     }
-    DEBUG_PRINT("%s\n", "timeStep flexWaitFence." );
+    // DEBUG_PRINT("%s\n", "timeStep flexWaitFence." );
     // flexWaitFence();
 }
 
@@ -364,7 +371,9 @@ SOP_FlexWires::cookMySop(OP_Context &context)
     // This is the frame that we're cooking at...
     fpreal currentTime  = context.getTime();
     fpreal currentFrame = chman->getSample(context.getTime());
-    fpreal resetFrame   = RESETFRAME(currentFrame); // Find our reset frame...
+    fpreal resetFrame   = RESETFRAME(currentTime);
+    mySolverSubSteps    = NUMSUBSTEPS(currentTime); // Find our reset frame...
+    myMaxSpringWires    = SYSmax(1, MAXSPRINGWIRES(currentTime));
     //myMaxParticles      = MAXPARTICLES();
 
     // // Set up our source information...
@@ -376,9 +385,9 @@ SOP_FlexWires::cookMySop(OP_Context &context)
         // gdp->clearAndDestroy();
         duplicateSource(0, context);
         myLastCookTime = resetFrame;
-        DEBUG_PRINT("%s\n", "Before initSystem.");
+        // DEBUG_PRINT("%s\n", "Before initSystem.");
         initSystem(currentTime);
-        DEBUG_PRINT("%s\n", "After initSystem." );
+        // DEBUG_PRINT("%s\n", "After initSystem." );
 
     }
     else
@@ -406,10 +415,10 @@ SOP_FlexWires::cookMySop(OP_Context &context)
         // while (myLastCookTime < currentFrame)
         // {
             // Here we have to convert our frame number to the actual time.
-            DEBUG_PRINT("%s\n", "Before timeStep." );
+            // DEBUG_PRINT("%s\n", "Before timeStep." );
             timeStep(chman->getTime(myLastCookTime));
             myLastCookTime += 1;
-            DEBUG_PRINT("%s\n", "After timeStep." );
+            // DEBUG_PRINT("%s\n", "After timeStep." );
         // }
 
         // if (myCollision) delete myCollision;

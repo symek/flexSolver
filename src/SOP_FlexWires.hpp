@@ -111,6 +111,7 @@ private:
     //  doesn't have to be in sequential order...
     int          RESETFRAME(fpreal t)          { INT_PARM("resetframe", 0, 0, 0) }
     int          NUMITERATIONS(fpreal t)       { INT_PARM("numiterations", 0, 0, 0) }
+    int          NUMSUBSTEPS(fpreal t)         { INT_PARM("numsubsteps", 0, 0, 0) }
     int          MAXPARTICLES(fpreal t)        { INT_PARM("maxParticles", 2, 0, 0) }
     fpreal       RADIUS(fpreal t)              { FLT_PARM("radius", 1, 0, t) }
     fpreal       SOLIDRESTDISTANCE(fpreal t)   { FLT_PARM("solidRestDistance", 1, 0, t) }
@@ -130,9 +131,7 @@ private:
     fpreal       PARTICLECOLLISIONMARGIN(fpreal t)   { FLT_PARM("particlecollisionmargin", 1, 0, t) }
     fpreal       SHAPECOLLISIONMARGIN(fpreal t)      { FLT_PARM("shapecollisionmargin", 1, 0, t) }
 
-
-
-
+    int          MAXSPRINGWIRES(fpreal t)        { INT_PARM("maxspringwires", 2, 0, 0) }
 
 
    
@@ -156,6 +155,8 @@ private:
     FlexParams*          myParms;
     FlexError            myFlexError;  
     int                  myMaxParticles;
+    int                  mySolverSubSteps;
+    int                  myMaxSpringWires;
     #ifdef CUDA_ALLOCATOR
     std::vector<float, FlexAllocator<float> >   myParticles;
     std::vector<float, FlexAllocator<float> >   myVelocities;
@@ -370,8 +371,9 @@ void updatePointAttribs(const GU_Detail *source, std::vector<float> &particles,
 }
 
 
-void copySpringAttribs(const GU_Detail *source,  std::vector<int> &springIndices,
-                      std::vector<float> &springLengths, std::vector<float> &springCoefficients)
+void copySpringAttribs(const GU_Detail *source, std::vector<int> &springIndices,
+                      std::vector<float> &springLengths, std::vector<float> &springCoefficients,
+                      const int springPerVertex=1)
 {
     uint springCounter = 0;
     GA_ROHandleF     stiffness_handle(source, GA_ATTRIB_POINT, "stiffness");
@@ -380,26 +382,44 @@ void copySpringAttribs(const GU_Detail *source,  std::vector<int> &springIndices
         const GEO_Primitive *prim = source->getGEOPrimitive(*it);
         const GA_Range vertices = prim->getVertexRange();
         GA_Offset vi;
-        for (vi = GA_Offset(1); vi < vertices.getEntries(); ++vi) {           
-            const GA_Offset vtx1 = prim->getVertexOffset(vi-1);
-            const GA_Offset vtx2 = prim->getVertexOffset(vi);
-            springIndices[2*springCounter]     = static_cast<int>(vtx1);
-            springIndices[(2*springCounter)+1] = static_cast<int>(vtx2);
-            const UT_Vector3 vp1 = source->getPos3(vtx1);
-            const UT_Vector3 vp2 = source->getPos3(vtx2);
-            springLengths[springCounter] = UT_Vector3(vp2 - vp1).length();
-            if (stiffness_handle.isValid()) {
-                const float stiffness1 = stiffness_handle.get(vtx1);
-                const float stiffness2 = stiffness_handle.get(vtx2);
-                springCoefficients[springCounter] = (stiffness1+stiffness2)/2.0f;
+        int springSpan = springPerVertex;
+        if (vertices.getEntries() <= springSpan) {
+            springSpan = vertices.getEntries() - springSpan-1; 
+            springSpan = SYSmax(springSpan, 1);
+        }
+        for (vi = GA_Offset(0); vi < vertices.getEntries() - springSpan; ++vi) {           
+            const GA_Offset vtx1 = prim->getVertexOffset(vi);
+            for (int span=1; span<=springSpan; ++span) {
+                const GA_Offset vtx2 = prim->getVertexOffset(vi+span);
+                springIndices[2*springCounter]     = static_cast<int>(vtx1);
+                springIndices[(2*springCounter)+1] = static_cast<int>(vtx2);
+                const UT_Vector3 vp1 = source->getPos3(vtx1);
+                const UT_Vector3 vp2 = source->getPos3(vtx2);
+                springLengths[springCounter] = UT_Vector3(vp2 - vp1).length();
+                if (stiffness_handle.isValid()) {
+                    const float stiffness1 = stiffness_handle.get(vtx1);
+                    const float stiffness2 = stiffness_handle.get(vtx2);
+                    springCoefficients[springCounter] = (stiffness1+stiffness2)/2.0f;
+                }
+                else {
+                    springCoefficients[springCounter] = .5f;
+                }
+                springCounter++;
             }
-            else {
-                springCoefficients[springCounter] = .5f;
-            }
-            springCounter++;
         }
     }
 
+}
+
+uint getNumSprings(const GU_Detail *gdp, const int springPerVertex=1)
+{
+    uint springs = 0;
+    for (GA_Iterator it(gdp->getPrimitiveRange()); !it.atEnd(); ++it) {
+        const GEO_Primitive *prim = gdp->getGEOPrimitive(*it);
+        const GA_Range vertices = prim->getVertexRange();
+        springs += (vertices.getEntries() - springPerVertex) * springPerVertex; 
+    }
+    return springs;
 }
 
 void copyMesh(const GU_Detail &gdp, float *points, int *vertices, \
@@ -431,16 +451,6 @@ void copyMesh(const GU_Detail &gdp, float *points, int *vertices, \
             vertex_index++;
         }
     }
-}
-
-uint getNumSprings(const GU_Detail *gdp)
-{
-    uint springs = 0;
-    for (GA_Iterator it(gdp->getPrimitiveRange()); !it.atEnd(); ++it) {
-        const GEO_Primitive *prim = gdp->getGEOPrimitive(*it);
-        const GA_Range vertices = prim->getVertexRange();
-        springs += vertices.getEntries() - 1; }
-    return springs;
 }
 
 
