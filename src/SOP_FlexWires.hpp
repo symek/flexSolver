@@ -11,6 +11,8 @@
 #define FLT_PARM(name, idx, vidx, t)    \
         return evalFloat(name, &myOffsets[idx], vidx, t);
 
+#define MAX_PARAMETERS 32
+
 #ifdef DEBUG
 #define DEBUG_PRINT(fmt, ...) fprintf(stderr, fmt, __VA_ARGS__)
 #else
@@ -109,35 +111,34 @@ private:
     // The evaluation routines use the indexed name lookup which is quite
     //  fast, yet easy to change indices (since the order of the indices
     //  doesn't have to be in sequential order...
-    int          RESETFRAME(fpreal t)          { INT_PARM("resetframe", 0, 0, 0) }
-    int          NUMITERATIONS(fpreal t)       { INT_PARM("numiterations", 0, 0, 0) }
-    int          NUMSUBSTEPS(fpreal t)         { INT_PARM("numsubsteps", 0, 0, 0) }
-    int          MAXPARTICLES(fpreal t)        { INT_PARM("maxParticles", 2, 0, 0) }
-    fpreal       RADIUS(fpreal t)              { FLT_PARM("radius", 1, 0, t) }
-    fpreal       SOLIDRESTDISTANCE(fpreal t)   { FLT_PARM("solidRestDistance", 1, 0, t) }
-    fpreal       DYNAMICFRICTION(fpreal t)     { FLT_PARM("dynamicfriction", 1, 0, t) }
-    fpreal       STATICFRICTION(fpreal t)      { FLT_PARM("staticfriction", 1, 0, t) }
-    fpreal       PARTICLEFRICTION(fpreal t)    { FLT_PARM("particlefriction", 1, 0, t) }
-    fpreal       RESTITUTION(fpreal t)         { FLT_PARM("restitution", 1, 0, t) }
-    fpreal       SLEEPTHRESHOLD(fpreal t)      { FLT_PARM("sleepthreshold", 1, 0, t) }
-    fpreal       MAXSPEED(fpreal t)            { FLT_PARM("maxspeed", 1, 0, t) }
+    int          RESETFRAME(fpreal t)          { INT_PARM("resetframe",   0, 0, 0) }
+    int          NUMITERATIONS(fpreal t)       { INT_PARM("numiterations",1, 0, t) }
+    int          NUMSUBSTEPS(fpreal t)         { INT_PARM("numsubsteps",  2, 0, t) }
+    int          MAXPARTICLES(fpreal t)        { INT_PARM("maxParticles", 3, 0, 0) }
+    fpreal       RADIUS(fpreal t)              { FLT_PARM("radius",       4, 0, t) }
+    fpreal       SOLIDRESTDISTANCE(fpreal t)   { FLT_PARM("solidRestDistance", 5, 0, t) }
+    fpreal       DYNAMICFRICTION(fpreal t)     { FLT_PARM("dynamicfriction",   6, 0, t) }
+    fpreal       STATICFRICTION(fpreal t)      { FLT_PARM("staticfriction",    7, 0, t) }
+    fpreal       PARTICLEFRICTION(fpreal t)    { FLT_PARM("particlefriction",  8, 0, t) }
+    fpreal       RESTITUTION(fpreal t)         { FLT_PARM("restitution",       9, 0, t) }
+    fpreal       SLEEPTHRESHOLD(fpreal t)      { FLT_PARM("sleepthreshold",    10, 0, t) }
+    fpreal       MAXSPEED(fpreal t)            { FLT_PARM("maxspeed",          11, 0, t) }
 
-    fpreal       SHOCKPROPAGATION(fpreal t)    { FLT_PARM("shockpropagation", 1, 0, t) }
-    fpreal       DISSIPATION(fpreal t)         { FLT_PARM("dissipation", 1, 0, t) }
-    fpreal       DAMPING(fpreal t)             { FLT_PARM("damping", 1, 0, t) }
-    fpreal       INERTIABIAS(fpreal t)         { FLT_PARM("inertiabias", 1, 0, t) }
+    fpreal       SHOCKPROPAGATION(fpreal t)    { FLT_PARM("shockpropagation",  12, 0, t) }
+    fpreal       DISSIPATION(fpreal t)         { FLT_PARM("dissipation",       13, 0, t) }
+    fpreal       DAMPING(fpreal t)             { FLT_PARM("damping",           14, 0, t) }
+    fpreal       INERTIABIAS(fpreal t)         { FLT_PARM("inertiabias",       15, 0, t) }
 
-    fpreal       COLLISIONDISTANCE(fpreal t)         { FLT_PARM("collisiondistance", 1, 0, t) }
-    fpreal       PARTICLECOLLISIONMARGIN(fpreal t)   { FLT_PARM("particlecollisionmargin", 1, 0, t) }
-    fpreal       SHAPECOLLISIONMARGIN(fpreal t)      { FLT_PARM("shapecollisionmargin", 1, 0, t) }
-
-    int          MAXSPRINGWIRES(fpreal t)        { INT_PARM("maxspringwires", 2, 0, 0) }
+    fpreal       COLLISIONDISTANCE(fpreal t)         { FLT_PARM("collisiondistance",       16, 0, t) }
+    fpreal       PARTICLECOLLISIONMARGIN(fpreal t)   { FLT_PARM("particlecollisionmargin", 17, 0, t) }
+    fpreal       SHAPECOLLISIONMARGIN(fpreal t)      { FLT_PARM("shapecollisionmargin",    18, 0, t) }
+    int          MAXSPRINGWIRES(fpreal t)            { INT_PARM("maxspringwires",          19, 0, 0) }
 
 
    
-    fpreal       FX(fpreal t)   { FLT_PARM("force", 1, 0, t) }
-    fpreal       FY(fpreal t)   { FLT_PARM("force", 1, 1, t) }
-    fpreal       FZ(fpreal t)   { FLT_PARM("force", 1, 2, t) }
+    fpreal       FX(fpreal t)   { FLT_PARM("force", 20, 0, t) }
+    fpreal       FY(fpreal t)   { FLT_PARM("force", 20, 1, t) }
+    fpreal       FZ(fpreal t)   { FLT_PARM("force", 20, 2, t) }
 
     const GU_Detail *mySource;
     const GU_Detail *collider;
@@ -235,9 +236,7 @@ private:
         if (g_params.mShapeCollisionMargin == 0.0f)
             g_params.mShapeCollisionMargin = g_params.mCollisionDistance*0.25f;
 
-        g_params.mMaxSpeed = 1000.0f;
-        // FIXME This doesnt work.
-        // g_params.mMaxSpeed = MAXSPEED(t);
+        g_params.mMaxSpeed = MAXSPEED(t);
     }
 };
 
@@ -263,7 +262,7 @@ int interpretError(const FlexError error)
 
 
 void copyPointAttribs(const GU_Detail *source, float* particles_ptr, 
-    float* velocities_ptr, int* actives, const float pinToAnimation=0)
+    float* velocities_ptr, int* actives, const float pinToAnimation=0, const FlexParams *parms=NULL)
 {
     GA_ROHandleV3  vel_handle(source, GA_ATTRIB_POINT, "v");
     GA_ROHandleF   pin_handle(source, GA_ATTRIB_POINT, "pintoanimation");
@@ -310,14 +309,15 @@ void copyPointAttribs(const GU_Detail *source, float* particles_ptr,
             velocities_ptr[3*offset+1] = 0.0f;
             velocities_ptr[3*offset+2] = 0.0f; 
         }
-        // else {
-        //     if (vel_valid) {
-        //         const UT_Vector3 vel    = vel_handle.get(ptoff);
-        //         velocities_ptr[3*offset]   += vel.x();//*pinValue; // We better initialize velocities...
-        //         velocities_ptr[3*offset+1] += vel.y();//*pinValue;
-        //         velocities_ptr[3*offset+2] += vel.z();//*pinValue;
-        //     }
-        // }
+        else {
+            if (parms) { //vel_valid
+                // const UT_Vector3 vel    = vel_handle.get(ptoff);
+                const float dumping = SYSmax((1.0f - parms->mDamping), 0.0f);
+                velocities_ptr[3*offset]   *= dumping; //vel.x();//*pinValue; // We better initialize velocities...
+                velocities_ptr[3*offset+1] *= dumping; // vel.y();//*pinValue;
+                velocities_ptr[3*offset+2] *= dumping; //vel.z();//*pinValue;
+            }
+        }
     }  
 }
 
