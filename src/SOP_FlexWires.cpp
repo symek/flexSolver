@@ -76,6 +76,7 @@ static PRM_Name names[] = {
     PRM_Name("numsubsteps", "Number of substeps"),
     PRM_Name("maxspringwires", "Springs per vertex"),
     PRM_Name("force",        "Force"),
+    PRM_Name("collisionground", "Use Collision Ground")
 };
 
 static const char* resetFrameHelp        = "Set frame when simulation will reset.";
@@ -139,6 +140,7 @@ SOP_FlexWires::myTemplateList[] = {
     PRM_Template(PRM_FLT_J, 1, &names[16], &PARTICLECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_FLT_J, 1, &names[17], &SHAPECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_INT,   1, &names[19], &MAXSPRINGWIRES_DEFAULT, 0, &maxSpringWiresRange, 0, 0, 1, 0),
+    PRM_Template(PRM_TOGGLE,1, &names[21], PRMoneDefaults, 0, 0, 0, 0, 1, 0),
 
     //PRM_Template(PRM_XYZ_J, 3, &names[6]),
     PRM_Template(),
@@ -231,6 +233,7 @@ SOP_FlexWires::initSystem(fpreal currentTime)
     myParticles.resize(0);
     myVelocities.resize(0);
     myActives.resize(0);
+    myPhases.resize(0);
     mySpringIndices.resize(0);
     mySpringLengths.resize(0);
     mySpringCoefficients.resize(0);
@@ -256,14 +259,14 @@ SOP_FlexWires::initSystem(fpreal currentTime)
 
     uint numSprings = getNumSprings(mySource, myMaxSpringWires);
     DEBUG_PRINT("%s: %i\n", "NumSprings", numSprings);       
-    mySpringIndices.resize(numSprings*2, 0);
-    mySpringLengths.resize(numSprings, 0.0f);
-    mySpringCoefficients.resize(numSprings, 0.0f);
+    // mySpringIndices.resize(numSprings*2, 0);
+    // mySpringLengths.resize(numSprings, 0.0f);
+    // mySpringCoefficients.resize(numSprings, 0.0f);
 
     // Copy source particles into self:
     DEBUG_PRINT("%s\n", "Before coping points and springs attribs." );
-    copyPointAttribs(gdp, &myParticles[0], &myVelocities[0], &myActives[0], -1.0);
-    copySpringAttribs(gdp, mySpringIndices, mySpringLengths, mySpringCoefficients, myMaxSpringWires);
+    copyPointAttribs(*gdp, myParticles, myVelocities, myActives, myPhases, -1.0);
+    copySprings(*gdp, mySpringIndices, mySpringLengths, mySpringCoefficients);
   
     // Initialize solver with sources:
     DEBUG_PRINT("%s\n", "before flexSetParticles etc." );
@@ -271,9 +274,7 @@ SOP_FlexWires::initSystem(fpreal currentTime)
     flexSetParticles(mySolver, &myParticles[0], maxParticles, eFlexMemoryHost);
     flexSetVelocities(mySolver, &myVelocities[0], maxParticles, eFlexMemoryHost);
     flexSetSprings(mySolver, &mySpringIndices[0], &mySpringLengths[0], &mySpringCoefficients[0], 
-        numSprings, eFlexMemoryHost);
-    
-
+        mySpringLengths.size(), eFlexMemoryHost);
 }
 
 void
@@ -300,7 +301,7 @@ SOP_FlexWires::timeStep(fpreal now)
 
     DEBUG_PRINT("%s:, Now: %f, timestep: %f\n", "timeStep before copyPointAttribs.", now, dt );
     // update positions, apply custom force fields, etc
-    copyPointAttribs(mySource, &myParticles[0], &myVelocities[0], &myActives[0], 1.0, myParms);
+    copyPointAttribs(*mySource, myParticles, myVelocities, myActives, myPhases, 1.0, myParms);
     // flexSetActive(mySolver, &myActives[0], myMaxParticles, eFlexMemoryHost);
 
     // update GPU data asynchronously
@@ -374,6 +375,7 @@ SOP_FlexWires::cookMySop(OP_Context &context)
     fpreal resetFrame   = RESETFRAME(currentTime);
     mySolverSubSteps    = NUMSUBSTEPS(currentTime); // Find our reset frame...
     myMaxSpringWires    = SYSmax(1, MAXSPRINGWIRES(currentTime));
+    // myCollisionGround   = COLLISIONGROUND(currentTime);
     //myMaxParticles      = MAXPARTICLES();
 
     // // Set up our source information...

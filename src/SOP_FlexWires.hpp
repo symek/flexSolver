@@ -133,6 +133,7 @@ private:
     fpreal       PARTICLECOLLISIONMARGIN(fpreal t)   { FLT_PARM("particlecollisionmargin", 17, 0, t) }
     fpreal       SHAPECOLLISIONMARGIN(fpreal t)      { FLT_PARM("shapecollisionmargin",    18, 0, t) }
     int          MAXSPRINGWIRES(fpreal t)            { INT_PARM("maxspringwires",          19, 0, 0) }
+    int          COLLISIONGROUND(fpreal t)           { INT_PARM("collisionground",         21, 0, 0) }
 
 
    
@@ -158,10 +159,12 @@ private:
     int                  myMaxParticles;
     int                  mySolverSubSteps;
     int                  myMaxSpringWires;
+    int                  myCollisionGround;
     #ifdef CUDA_ALLOCATOR
     std::vector<float, FlexAllocator<float> >   myParticles;
     std::vector<float, FlexAllocator<float> >   myVelocities;
     std::vector<int,   FlexAllocator<int> >     myActives;
+    std::vector<int,   FlexAllocator<int> >     myPhases;
     std::vector<int,   FlexAllocator<int> >     mySpringIndices;
     std::vector<float, FlexAllocator<float> >   mySpringLengths;
     std::vector<float, FlexAllocator<float> >   mySpringCoefficients;
@@ -169,6 +172,7 @@ private:
     std::vector<float>   myParticles;
     std::vector<float>   myVelocities;
     std::vector<int>     myActives;
+    std::vector<int>     myPhases;
     std::vector<int>     mySpringIndices;
     std::vector<float>   mySpringLengths;
     std::vector<float>   mySpringCoefficients;
@@ -237,6 +241,15 @@ private:
             g_params.mShapeCollisionMargin = g_params.mCollisionDistance*0.25f;
 
         g_params.mMaxSpeed = MAXSPEED(t);
+
+        if (COLLISIONGROUND(t)) {
+
+        g_params.mPlanes[0][0] = 0.0f;
+        g_params.mPlanes[0][1] = 1.0f;
+        g_params.mPlanes[0][2] = 0.0f;
+        g_params.mPlanes[0][3] = 0.0f;
+        g_params.mNumPlanes = 1;
+        }
     }
 };
 
@@ -261,115 +274,67 @@ int interpretError(const FlexError error)
 }
 
 
-void copyPointAttribs(const GU_Detail *source, float* particles_ptr, 
-    float* velocities_ptr, int* actives, const float pinToAnimation=0, const FlexParams *parms=NULL)
+void copyPointAttribs(const GU_Detail &gdp, std::vector<float> &particles, 
+                      std::vector<float> &velocities, std::vector<int> &actives, 
+                      std::vector<int> &phases, const float glueToAnimation=0,
+                      const FlexParams *parms=NULL)
 {
-    GA_ROHandleV3  vel_handle(source, GA_ATTRIB_POINT, "v");
-    GA_ROHandleF   pin_handle(source, GA_ATTRIB_POINT, "pintoanimation");
-    GA_ROHandleF   mas_handle(source, GA_ATTRIB_POINT, "mass");
-    const int      vel_valid = vel_handle.isValid();
-          int      pin_valid = pin_handle.isValid();
-    const int      mas_valid = mas_handle.isValid();
+    GA_ROHandleV3  vel_handle(&gdp, GA_ATTRIB_POINT, "v");
+    GA_ROHandleF  glue_handle(&gdp, GA_ATTRIB_POINT, "gluetoanimation");
+    GA_ROHandleF  mass_handle(&gdp, GA_ATTRIB_POINT, "mass");
+    GA_ROHandleI phase_handle(&gdp, GA_ATTRIB_POINT, "phase");
+    
+    const int   vel_valid = vel_handle.isValid();
+          int  glue_valid = glue_handle.isValid();
+    const int  mass_valid = mass_handle.isValid();
+    const int phase_valid = phase_handle.isValid();
 
-    float pinValue = 0.0f;
-    float masValue = 1.0f;
+    float glueValue = 0.0f;
+    float massValue = 1.0f;
 
-    if (pinToAnimation < 0.0f) {
-        pin_valid = 0;
-        pinValue = 1.0f;
+    if (glueToAnimation < 0.0f) {
+        glue_valid = 0;
+        glueValue = 1.0f;
     }
 
     GA_Offset ptoff;
-    GA_FOR_ALL_PTOFF(source, ptoff) 
+    GA_FOR_ALL_PTOFF(&gdp, ptoff) 
     {
         const int offset = static_cast<const int>(ptoff);
-        if (pin_valid) {
-            pinValue = pin_handle.get(ptoff);
-        if (pinValue == 1.0 && pinToAnimation > 0)
-            actives[offset] = -1;
-        }
-        if (mas_valid) {
-            masValue = mas_handle.get(ptoff);
+
+        if (glue_valid) {
+            glueValue = glue_handle.get(ptoff);
+            if (glueValue == 1.0 && glueToAnimation > 0)
+                actives[offset] = -1;
         }
 
-        const UT_Vector3 pos = source->getPos3(ptoff);
-
-        UT_Vector3 delta(particles_ptr[4*offset],
-                         particles_ptr[4*offset+1],
-                         particles_ptr[4*offset+2]);
-
-        delta -= (delta - pos)*pinValue;
-        particles_ptr[4*offset]   = delta.x();
-        particles_ptr[4*offset+1] = delta.y();
-        particles_ptr[4*offset+2] = delta.z();
-        particles_ptr[4*offset+3] = masValue;
-        
-        if (pinValue == 1.0) {
-            velocities_ptr[3*offset]   = 0.0f; // We better initialize velocities...
-            velocities_ptr[3*offset+1] = 0.0f;
-            velocities_ptr[3*offset+2] = 0.0f; 
-        }
-        else {
-            if (parms) { //vel_valid
-                // const UT_Vector3 vel    = vel_handle.get(ptoff);
-                const float dumping = SYSmax((1.0f - parms->mDamping), 0.0f);
-                velocities_ptr[3*offset]   *= dumping; //vel.x();//*pinValue; // We better initialize velocities...
-                velocities_ptr[3*offset+1] *= dumping; // vel.y();//*pinValue;
-                velocities_ptr[3*offset+2] *= dumping; //vel.z();//*pinValue;
-            }
-        }
-    }  
-}
-
-
-void updatePointAttribs(const GU_Detail *source, std::vector<float> &particles, 
-                      std::vector<float>  &velocities, std::vector<int> &actives, 
-                      const float pinToAnimation=0)
-{
-    GA_ROHandleV3  vel_handle(source, GA_ATTRIB_POINT, "v");
-    GA_ROHandleF   pin_handle(source, GA_ATTRIB_POINT, "pintoanimation");
-    GA_ROHandleF   mas_handle(source, GA_ATTRIB_POINT, "mass");
-    const int      vel_valid = vel_handle.isValid();
-          int      pin_valid = pin_handle.isValid();
-    const int      mas_valid = mas_handle.isValid();
-
-    float pinValue = 1.0f;
-    float masValue = 1.0f;
-    UT_Vector3 vel(0, 0, 0);
-
-    GA_Offset ptoff;
-    GA_FOR_ALL_PTOFF(source, ptoff) 
-    {
-        const int offset = static_cast<const int>(ptoff);
-        if (pin_valid) {
-            pinValue = pin_handle.get(ptoff);
-        if (pinValue == 1.0 && pinToAnimation > 0)
-            actives[offset] = -1;
-        }
-        if (mas_valid) {
-            masValue = mas_handle.get(ptoff);
-        }
-        if (vel_valid){
-            vel = vel_handle.get(ptoff);
+        if (mass_valid) {
+            massValue = mass_handle.get(ptoff);
         }
 
-        // const UT_Vector3 pos = source->getPos3(ptoff);
+        const UT_Vector3 pos = gdp.getPos3(ptoff);
 
-        particles[4*offset+3] = masValue;
+        UT_Vector3 delta(particles[4*offset],
+                         particles[4*offset+1],
+                         particles[4*offset+2]);
 
-        velocities[3*offset]   += static_cast<float>(vel.x());//*pinValue; // No parial pinning 
-        velocities[3*offset+1] += static_cast<float>(vel.y());//*pinValue;
-        velocities[3*offset+2] += static_cast<float>(vel.z());//*pinValue;
+        delta -= (delta - pos)*glueValue;
+        particles[4*offset]   = delta.x();
+        particles[4*offset+1] = delta.y();
+        particles[4*offset+2] = delta.z();
+        particles[4*offset+3] = massValue;
 
-        if (pinValue == 1.0f) {
-            velocities[3*offset]   = 0.0f; 
+        if (glueValue == 1.0f) {
+            velocities[3*offset]   = 0.0f;
             velocities[3*offset+1] = 0.0f;
             velocities[3*offset+2] = 0.0f;
+            particles[4*offset]      = pos.x();
+            particles[4*offset+1]    = pos.y();
+            particles[4*offset+2]    = pos.z();
 
-            }
+        }
     }  
 }
-
 
 void copySpringAttribs(const GU_Detail *source, std::vector<int> &springIndices,
                       std::vector<float> &springLengths, std::vector<float> &springCoefficients,
@@ -408,8 +373,88 @@ void copySpringAttribs(const GU_Detail *source, std::vector<int> &springIndices,
             }
         }
     }
-
 }
+
+void createSpringsFromEdges(const GU_Detail &source, std::vector<int> &springIndices,
+                      std::vector<float> &springLengths, std::vector<float> &springCoefficients,
+                      const int springPerVertex=1)
+{
+    GA_ROHandleF     stiffness_handle(&source, GA_ATTRIB_POINT, "stiffness");
+    for (GA_Iterator it(source.getPrimitiveRange()); !it.atEnd(); ++it)
+    {
+        const GEO_Primitive *prim = source.getGEOPrimitive(*it);
+        const GA_Range vertices = prim->getVertexRange();
+        GA_Offset vi;
+        int springSpan = springPerVertex;
+        if (vertices.getEntries() <= springSpan) {
+            springSpan = vertices.getEntries() - springSpan-1; 
+            springSpan = SYSmax(springSpan, 1);
+        }
+        for (vi = GA_Offset(0); vi < vertices.getEntries() - springSpan; ++vi) {           
+            const GA_Offset vtx1 = prim->getVertexOffset(vi);
+            for (int span=1; span<=springSpan; ++span) {
+                const GA_Offset vtx2 = prim->getVertexOffset(vi+span);
+                springIndices.push_back(static_cast<int>(vtx1));
+                springIndices.push_back(static_cast<int>(vtx2));
+                const UT_Vector3 vp1 = source.getPos3(vtx1);
+                const UT_Vector3 vp2 = source.getPos3(vtx2);
+                springLengths.push_back(UT_Vector3(vp2 - vp1).length());
+                if (stiffness_handle.isValid()) {
+                    const float stiffness1 = stiffness_handle.get(vtx1);
+                    const float stiffness2 = stiffness_handle.get(vtx2);
+                    springCoefficients.push_back((stiffness1+stiffness2)/2.0f);
+                }
+                else {
+                    springCoefficients.push_back(.5f);
+                }
+            }
+        }
+    }
+}
+
+
+void createSpringsFromAttrib(const GU_Detail &source, std::vector<int> &springIndices,
+                       std::vector<float> &springLengths,  std::vector<float> &springCoefficients)
+{
+    GA_ROHandleF  stiffness_handle(&source, GA_ATTRIB_POINT, "stiffness");
+    GA_ROHandleIA springs_handle(&source, GA_ATTRIB_POINT, "springs");
+   
+    if (!springs_handle.isValid())
+        return;
+
+    GA_Offset ptoff;
+    UT_IntArray springsOffsets;
+    GA_FOR_ALL_PTOFF(&source, ptoff) {
+        springs_handle.get(ptoff, springsOffsets);
+        const UT_Vector3 vp1 = source.getPos3(ptoff);
+        for (UT_IntArray::iterator it=springsOffsets.begin(); !it.atEnd(); ++it) {
+            const UT_Vector3 vp2 = source.getPos3(*it);
+            springIndices.push_back(ptoff);
+            springIndices.push_back(*it);
+            springLengths.push_back(UT_Vector3(vp2 - vp1).length());
+            if (stiffness_handle.isValid()) {
+                const float stiffness1 = stiffness_handle.get(ptoff);
+                const float stiffness2 = stiffness_handle.get(*it);
+                springCoefficients.push_back((stiffness1+stiffness2)/2.0f);
+            }
+            else {
+                springCoefficients.push_back(.5f);
+            } 
+        }     
+    }
+}
+
+void copySprings(const GU_Detail &gdp,  std::vector<int> &springIndices,
+                       std::vector<float> &springLengths,  
+                       std::vector<float> &springCoefficients)
+{
+    GA_ROHandleIA springs_handle(&gdp, GA_ATTRIB_POINT, "springs");
+    if (springs_handle.isValid())
+        createSpringsFromAttrib(gdp, springIndices, springLengths, springCoefficients);
+    else
+        createSpringsFromEdges(gdp, springIndices, springLengths, springCoefficients);
+}
+
 
 uint getNumSprings(const GU_Detail *gdp, const int springPerVertex=1)
 {
