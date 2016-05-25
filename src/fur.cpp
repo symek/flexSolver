@@ -30,97 +30,155 @@ int interpretError(const FlexError error)
     return 4;
 }
 
-void copyPointAttribs(const GU_Detail &gdp, float* particles_ptr, 
-    float* velocities_ptr, int* actives, const float pinToAnimation=0)
+void copyPointAttribs(const GU_Detail &gdp, std::vector<float> &particles, 
+                      std::vector<float> &velocities, std::vector<int> &actives, 
+                      std::vector<int> &phases, const float glueToAnimation=0)
 {
     GA_ROHandleV3  vel_handle(&gdp, GA_ATTRIB_POINT, "v");
-    GA_ROHandleF   pin_handle(&gdp, GA_ATTRIB_POINT, "pintoanimation");
-    GA_ROHandleF   mas_handle(&gdp, GA_ATTRIB_POINT, "mass");
-    const int      vel_valid = vel_handle.isValid();
-          int      pin_valid = pin_handle.isValid();
-    const int      mas_valid = mas_handle.isValid();
+    GA_ROHandleF  glue_handle(&gdp, GA_ATTRIB_POINT, "gluetoanimation");
+    GA_ROHandleF  mass_handle(&gdp, GA_ATTRIB_POINT, "mass");
+    GA_ROHandleI phase_handle(&gdp, GA_ATTRIB_POINT, "phase");
+    
+    const int   vel_valid = vel_handle.isValid();
+          int  glue_valid = glue_handle.isValid();
+    const int  mass_valid = mass_handle.isValid();
+    const int phase_valid = phase_handle.isValid();
 
-    float pinValue = 0.0f;
-    float masValue = 1.0f;
+    float glueValue = 0.0f;
+    float massValue = 1.0f;
 
-    if (pinToAnimation < 0.0f) {
-        pin_valid = 0;
-        pinValue = 1.0f;
+    if (glueToAnimation < 0.0f) {
+        glue_valid = 0;
+        glueValue = 1.0f;
     }
 
     GA_Offset ptoff;
     GA_FOR_ALL_PTOFF(&gdp, ptoff) 
     {
         const int offset = static_cast<const int>(ptoff);
-        if (pin_valid) {
-            pinValue = pin_handle.get(ptoff);
-        if (pinValue == 1.0 && pinToAnimation > 0)
-            actives[offset] = -1;
+
+        if (glue_valid) {
+            glueValue = glue_handle.get(ptoff);
+            if (glueValue == 1.0 && glueToAnimation > 0)
+                actives[offset] = -1;
         }
-        if (mas_valid) {
-            masValue = mas_handle.get(ptoff);
+
+        if (mass_valid) {
+            massValue = mass_handle.get(ptoff);
         }
 
         const UT_Vector3 pos = gdp.getPos3(ptoff);
 
-        UT_Vector3 delta(particles_ptr[4*offset],
-                         particles_ptr[4*offset+1],
-                         particles_ptr[4*offset+2]);
+        UT_Vector3 delta(particles[4*offset],
+                         particles[4*offset+1],
+                         particles[4*offset+2]);
 
-        delta -= (delta - pos)*pinValue;
-        particles_ptr[4*offset]   = delta.x();
-        particles_ptr[4*offset+1] = delta.y();
-        particles_ptr[4*offset+2] = delta.z();
-        particles_ptr[4*offset+3] = masValue;
+        delta -= (delta - pos)*glueValue;
+        particles[4*offset]   = delta.x();
+        particles[4*offset+1] = delta.y();
+        particles[4*offset+2] = delta.z();
+        particles[4*offset+3] = massValue;
         
-        if (vel_valid) {
-            const UT_Vector3 vel    = vel_handle.get(ptoff);
-            velocities_ptr[3*offset]   += vel.x();//*pinValue; // We better initialize velocities...
-            velocities_ptr[3*offset+1] += vel.y();//*pinValue;
-            velocities_ptr[3*offset+2] += vel.z();//*pinValue;
+        // if (vel_valid && glueValue != 1.0f) {
+        //     const UT_Vector3 vel    = vel_handle.get(ptoff);
+        //     velocities[3*offset]   += vel.x();
+        //     velocities[3*offset+1] += vel.y();
+        //     velocities[3*offset+2] += vel.z();
+        // }
 
-        if (pinValue == 1.0) {
-            velocities_ptr[3*offset]   = 0.0f; // We better initialize velocities...
-            velocities_ptr[3*offset+1] = 0.0f;
-            velocities_ptr[3*offset+2] = 0.0f;
+        if (glueValue == 1.0f) {
+            velocities[3*offset]   = 0.0f;
+            velocities[3*offset+1] = 0.0f;
+            velocities[3*offset+2] = 0.0f;
+            particles[4*offset]      = pos.x();
+            particles[4*offset+1]    = pos.y();
+            particles[4*offset+2]    = pos.z();
 
-            }
         }
     }  
 }
 
 
-void copySpringAttribs(const GU_Detail &gdp,  int   *springIndices,
-                       float *springLengths,  float *springCoefficients)
+void createSpringsFromEdges(const GU_Detail &source, std::vector<int> &springIndices,
+                      std::vector<float> &springLengths, std::vector<float> &springCoefficients,
+                      const int springPerVertex=1)
 {
-    uint springCounter = 0;
-    GA_ROHandleF     stiffness_handle(&gdp, GA_ATTRIB_POINT, "stiffness");
-    for (GA_Iterator it(gdp.getPrimitiveRange()); !it.atEnd(); ++it)
+    GA_ROHandleF     stiffness_handle(&source, GA_ATTRIB_POINT, "stiffness");
+    for (GA_Iterator it(source.getPrimitiveRange()); !it.atEnd(); ++it)
     {
-        const GEO_Primitive *prim = gdp.getGEOPrimitive(*it);
+        const GEO_Primitive *prim = source.getGEOPrimitive(*it);
         const GA_Range vertices = prim->getVertexRange();
         GA_Offset vi;
-        for (vi = GA_Offset(1); vi < vertices.getEntries(); ++vi) {           
-            const GA_Offset vtx1 = prim->getVertexOffset(vi-1);
-            const GA_Offset vtx2 = prim->getVertexOffset(vi);
-            springIndices[2*springCounter]     = static_cast<int>(vtx1);
-            springIndices[(2*springCounter)+1] = static_cast<int>(vtx2);
-            const UT_Vector3 vp1 = gdp.getPos3(vtx1);
-            const UT_Vector3 vp2 = gdp.getPos3(vtx2);
-            springLengths[springCounter] = UT_Vector3(vp2 - vp1).length();
-            if (stiffness_handle.isValid()) {
-                const float stiffness1 = stiffness_handle.get(vtx1);
-                const float stiffness2 = stiffness_handle.get(vtx2);
-                springCoefficients[springCounter] = (stiffness1+stiffness2)/2.0f;
+        int springSpan = springPerVertex;
+        if (vertices.getEntries() <= springSpan) {
+            springSpan = vertices.getEntries() - springSpan-1; 
+            springSpan = SYSmax(springSpan, 1);
+        }
+        for (vi = GA_Offset(0); vi < vertices.getEntries() - springSpan; ++vi) {           
+            const GA_Offset vtx1 = prim->getVertexOffset(vi);
+            for (int span=1; span<=springSpan; ++span) {
+                const GA_Offset vtx2 = prim->getVertexOffset(vi+span);
+                springIndices.push_back(static_cast<int>(vtx1));
+                springIndices.push_back(static_cast<int>(vtx2));
+                const UT_Vector3 vp1 = source.getPos3(vtx1);
+                const UT_Vector3 vp2 = source.getPos3(vtx2);
+                springLengths.push_back(UT_Vector3(vp2 - vp1).length());
+                if (stiffness_handle.isValid()) {
+                    const float stiffness1 = stiffness_handle.get(vtx1);
+                    const float stiffness2 = stiffness_handle.get(vtx2);
+                    springCoefficients.push_back((stiffness1+stiffness2)/2.0f);
+                }
+                else {
+                    springCoefficients.push_back(.5f);
+                }
             }
-            else {
-                springCoefficients[springCounter] = .5f;
-            }
-            springCounter++;
         }
     }
-
 }
+
+
+void createSpringsFromAttrib(const GU_Detail &source, std::vector<int> &springIndices,
+                       std::vector<float> &springLengths,  std::vector<float> &springCoefficients)
+{
+    GA_ROHandleF  stiffness_handle(&source, GA_ATTRIB_POINT, "stiffness");
+    GA_ROHandleIA springs_handle(&source, GA_ATTRIB_POINT, "springs");
+   
+    if (!springs_handle.isValid())
+        return;
+
+    GA_Offset ptoff;
+    UT_IntArray springsOffsets;
+    GA_FOR_ALL_PTOFF(&source, ptoff) {
+        springs_handle.get(ptoff, springsOffsets);
+        const UT_Vector3 vp1 = source.getPos3(ptoff);
+        for (UT_IntArray::iterator it=springsOffsets.begin(); !it.atEnd(); ++it) {
+            const UT_Vector3 vp2 = source.getPos3(*it);
+            springIndices.push_back(ptoff);
+            springIndices.push_back(*it);
+            springLengths.push_back(UT_Vector3(vp2 - vp1).length());
+            if (stiffness_handle.isValid()) {
+                const float stiffness1 = stiffness_handle.get(ptoff);
+                const float stiffness2 = stiffness_handle.get(*it);
+                springCoefficients.push_back((stiffness1+stiffness2)/2.0f);
+            }
+            else {
+                springCoefficients.push_back(.5f);
+            } 
+        }     
+    }
+}
+
+void copySprings(const GU_Detail &gdp,  std::vector<int> &springIndices,
+                       std::vector<float> &springLengths,  
+                       std::vector<float> &springCoefficients)
+{
+    GA_ROHandleIA springs_handle(&gdp, GA_ATTRIB_POINT, "springs");
+    if (springs_handle.isValid())
+        createSpringsFromAttrib(gdp, springIndices, springLengths, springCoefficients);
+    else
+        createSpringsFromEdges(gdp, springIndices, springLengths, springCoefficients);
+}
+
 
 void copyMesh(const GU_Detail &gdp, float *points, int *vertices, \
             int &npoints, int &npoly, float *lower, float *upper)
@@ -255,74 +313,47 @@ int main(void)
     FlexSolver* solver = flexCreateSolver(maxParticles, maxDiffuse);
     FlexTimers timer   = FlexTimers();
     FlexParams parms   = FlexParams();
-    flexSetDebug(solver, true);
-    flexStartRecord(solver, "./debug");
-    parms.mPlanes[0][0] = 0.0f;
-    parms.mPlanes[0][1] = 1.0f;
-    parms.mPlanes[0][2] = 0.0f;
-    parms.mPlanes[0][3] = 0.0f;
+    // flexSetDebug(solver, true);
+    // flexStartRecord(solver, "./debug");
+    // parms.mPlanes[0][0] = 0.0f;
+    // parms.mPlanes[0][1] = 1.0f;
+    // parms.mPlanes[0][2] = 0.0f;
+    // parms.mPlanes[0][3] = 0.0f;
 
-    parms.mNumPlanes = 1;
+    // parms.mNumPlanes = 1;
 
     // set Fluid like parms:
     InitFlexParams(parms);
     flexSetParams(solver, &parms);
 
     // alloc CUDA pinned host memory to allow asynchronous memory transfers
-    Vec4*  particles      = reinterpret_cast<Vec4*>(flexAlloc(maxParticles*sizeof(Vec4)));
-    Vec3*  velocities     = reinterpret_cast<Vec3*>(flexAlloc(maxParticles*sizeof(Vec3)));
-    float* particles_ptr  = reinterpret_cast<float*>(particles);
-    float* velocities_ptr = reinterpret_cast<float*>(velocities);
-    // int*   actives        = reinterpret_cast<int*>(flexAlloc(sizeof(int)*maxParticles));
-    std::vector<int, flexAllocator<int> > actives_vec;
-    actives_vec.resize(maxParticles);
-    int *actives = reinterpret_cast<int*>(&actives_vec[0]);
-    // Dealocator doesn't work here we need to clear by hand...
-    // std::vector<float, flexAllocator<float> > test;
-    // std::cout << test.capacity() << ",";
-    // test.resize(100, 0);
-    // for (int i = 0; i< 100; ++i)
-    //  std::cout << test[0] << ",";
-    // test.push_back(10);
-    // for (int i=0; i < test.capacity(); ++i)
-    //     test[i] = i*1.0f;
-    // std::cout << test.capacity() << ",";
-    // test.clear();
-    // std::cout << test.capacity() << ",";
-    // flexFree((void*)&test[0]);
 
-
+    std::vector<float> particles(maxParticles*4, 0);
+    std::vector<float> velocities(maxParticles*4,0);
+    std::vector<int>   actives(maxParticles, 0);
+    std::vector<int>   phases(maxParticles, 0);
 
     for (int i=0; i < maxParticles; ++i) {
         actives[i] = i;
-        velocities_ptr[3*i]   = 0.0f;
-        velocities_ptr[3*i+1] = 0.0f;
-        velocities_ptr[3*i+2] = 0.0f;
-        particles_ptr[4*i]   = 0.0f;
-        particles_ptr[4*i+1] = 0.0f;
-        particles_ptr[4*i+2] = 0.0f;
-        particles_ptr[4*i+3] = 1.0f;
     }
 
     // set initial particle data
-    copyPointAttribs(gdp, particles_ptr, velocities_ptr, actives, -1.0);
-    // std::cout<< "Once agian" << std::endl;
-    // copyPointAttribs(gdp, particles_ptr, velocities_ptr, 0.0);
+    copyPointAttribs(gdp, particles, velocities, actives, phases, -1.0);
 
     // Springs setup:
-    uint  numSprings     = getNumSprings(gdp);
-    std::cout << "Springs created      : " <<  numSprings <<std::endl;
-    int   *springIndices = reinterpret_cast<int*>(flexAlloc(sizeof(int)*2*numSprings));
-    float *springLengths = reinterpret_cast<float*>(flexAlloc(sizeof(float)*numSprings));
-    float *springCoefficients =reinterpret_cast<float*>(flexAlloc(sizeof(float)*numSprings));
-    copySpringAttribs(gdp, springIndices, springLengths, springCoefficients);
+    // uint  numSprings     = getNumSprings(gdp);
+    // std::cout << "Springs created      : " <<  numSprings <<std::endl;
+    std::vector<int>   springIndices(0);        // = reinterpret_cast<int*>(flexAlloc(sizeof(int)*2*numSprings));
+    std::vector<float> springLengths(0);        //= reinterpret_cast<float*>(flexAlloc(sizeof(float)*numSprings));
+    std::vector<float> springCoefficients(0);   // =reinterpret_cast<float*>(flexAlloc(sizeof(float)*numSprings));
+    copySprings(gdp, springIndices, springLengths, springCoefficients);
 
 
-    flexSetActive(solver, &actives[0], maxParticles, eFlexMemoryHostAsync);
-    flexSetParticles(solver, particles_ptr, maxParticles, eFlexMemoryHostAsync);
-    flexSetVelocities(solver, velocities_ptr, maxParticles, eFlexMemoryHostAsync);
-    flexSetSprings(solver, springIndices, springLengths, springCoefficients, \
-                numSprings, eFlexMemoryHostAsync);
+    flexSetActive(solver, &actives[0], maxParticles, eFlexMemoryHost);
+    flexSetParticles(solver, &particles[0], maxParticles, eFlexMemoryHost);
+    flexSetVelocities(solver, &velocities[0], maxParticles, eFlexMemoryHost);
+    flexSetSprings(solver, &springIndices[0], &springLengths[0], \
+        &springCoefficients[0], springLengths.size(), eFlexMemoryHost);
 
 
     /*------------- Collision objects ------------- */
@@ -340,28 +371,28 @@ int main(void)
 
         // update positions, apply custom force fields, etc
         // ModifyParticles(particles, velocities);
-        copyPointAttribs(source, particles_ptr, velocities_ptr, actives, 1.0);
+        copyPointAttribs(source, particles, velocities, actives, phases, 1.0);
         // flexSetActive(solver, actives, maxParticles, eFlexMemoryHostAsync);
 
         // update GPU data asynchronously
         // const float t = counter / 24.0f;
         // createCollisionMesh(solver, collisionGeo, counter);
     
-        flexSetParticles(solver, particles_ptr, maxParticles, eFlexMemoryHostAsync);
-        flexSetVelocities(solver, velocities_ptr, maxParticles, eFlexMemoryHostAsync);
-        flexSetSprings(solver, springIndices, springLengths, springCoefficients, \
-            numSprings, eFlexMemoryHostAsync);
+        flexSetParticles(solver, &particles[0], maxParticles, eFlexMemoryHost);
+        flexSetVelocities(solver, &velocities[0], maxParticles, eFlexMemoryHost);
+        flexSetSprings(solver, &springIndices[0], &springLengths[0], &springCoefficients[0], \
+            springLengths.size(), eFlexMemoryHost);
         
 
         // tick solver
         flexUpdateSolver(solver, dt, 1, &timer);
 
         // kick off async memory reads from device
-        flexGetParticles(solver, particles_ptr, maxParticles, eFlexMemoryHostAsync);
-        flexGetVelocities(solver, velocities_ptr, maxParticles, eFlexMemoryHostAsync);
+        flexGetParticles(solver, &particles[0], maxParticles, eFlexMemoryHost);
+        flexGetVelocities(solver, &velocities[0], maxParticles, eFlexMemoryHost);
 
         // wait for GPU to finish working (can perform async. CPU work here)
-        flexSetFence();
+        // flexSetFence();
 
 
         /*-----> Copy to/from Houdini here as GPU computes. <--------------*/
@@ -370,14 +401,14 @@ int main(void)
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(&gdp, ptoff) {
             const int offset = static_cast<int>(ptoff)*4;
-            float *point     = &particles_ptr[offset];
-            const UT_Vector3 pos(point[0], point[1], point[2]);
+            // float *point     = &particles_ptr[offset];
+            const UT_Vector3 pos(particles[offset], particles[offset+1], particles[offset+2]);
             gdp.setPos3(ptoff, pos);
         }
         // updated particle data is ready to be used
         saveGeometry(gdp, counter);
 
-        flexWaitFence();
+        // flexWaitFence();
         
         counter++;
 
@@ -388,12 +419,12 @@ int main(void)
     std::cout << "Density ca: " <<  timer.mCalculateDensity << std::endl;
     std::cout << "Collisions: " <<  timer.mCollideParticles << std::endl;
 
-    flexFree(particles);
-    flexFree(velocities);
-    flexFree(springIndices);
-    flexFree(springLengths);
-    flexFree(springCoefficients);
-    flexFree(actives);
+    // flexFree(particles);
+    // flexFree(velocities);
+    // flexFree(springIndices);
+    // flexFree(springLengths);
+    // flexFree(springCoefficients);
+    // flexFree(actives);
     // flexFree(phases);
     // flexStopRecord(solver);
     flexDestroySolver(solver);
