@@ -336,7 +336,8 @@ void copyPointAttribs(const GU_Detail &gdp, std::vector<float> &particles,
     }  
 }
 
-void getPointNeighboursRecrusive(const GU_Detail &gdp, const GA_Offset ptoff, std::set<GA_Offset> &pointList)
+void getPointNeighboursRecrusive(const GU_Detail &gdp, const GA_Offset ptoff, \
+    std::set<GA_Offset> &pointList)
 {
     GA_OffsetArray pointVertices;
     gdp.getVerticesReferencingPoint(pointVertices, ptoff);
@@ -369,50 +370,30 @@ void getPointNeighbours(const GU_Detail &gdp, const GA_Offset ptoff,\
     pointList.erase(ptoff); //
 }
 
-void createSpringsFromEdges(const GU_Detail &source, std::vector<int> &springIndices,
-                      std::vector<float> &springLengths, std::vector<float> &springCoefficients,
-                      const int springPerVertex=1)
-{
-    GA_ROHandleF stiffness_handle(&source, GA_ATTRIB_POINT, "stiffness");
-    GA_Offset ptoff;
-    GA_FOR_ALL_PTOFF(&source, ptoff) {
-        const UT_Vector3 vp1 = source.getPos3(ptoff);
-        std::set<GA_Offset> neighbours;
-        getPointNeighbours(source, ptoff, neighbours, springPerVertex);
-        std::set<GA_Offset>::const_iterator it;
-        for (it=neighbours.begin(); it!=neighbours.end(); ++it) {
-            springIndices.push_back(static_cast<int>(ptoff));
-            springIndices.push_back(static_cast<int>(*it));
-            const UT_Vector3 vp2 = source.getPos3(*it);
-            springLengths.push_back(UT_Vector3(vp2 - vp1).length());
-            if (stiffness_handle.isValid()) {
-                const float stiffness1 = stiffness_handle.get(ptoff);
-                const float stiffness2 = stiffness_handle.get(*it);
-                springCoefficients.push_back((stiffness1+stiffness2)/2.0f);
-            }
-            else {
-                springCoefficients.push_back(.5f);
-            }
-        }
-    }
-}
 
-
-void createSpringsFromAttrib(const GU_Detail &source, std::vector<int> &springIndices,
-                       std::vector<float> &springLengths,  std::vector<float> &springCoefficients)
+void copySprings(const GU_Detail &source, std::vector<int> &springIndices,
+        std::vector<float> &springLengths,  std::vector<float> &springCoefficients,
+        const int edgeSpringSpan=1)
 {
     GA_ROHandleF  stiffness_handle(&source, GA_ATTRIB_POINT, "stiffness");
     GA_ROHandleIA springs_handle(&source, GA_ATTRIB_POINT, "springs");
-   
-    if (!springs_handle.isValid())
-        return;
-
+    UT_IntArray   springsOffsets;
+    
     GA_Offset ptoff;
-    UT_IntArray springsOffsets;
     GA_FOR_ALL_PTOFF(&source, ptoff) {
-        springs_handle.get(ptoff, springsOffsets);
-        const UT_Vector3 vp1 = source.getPos3(ptoff);
-        for (UT_IntArray::iterator it=springsOffsets.begin(); !it.atEnd(); ++it) {
+        std::set<GA_Offset> neighbours;
+        if (springs_handle.isValid()) {
+            springs_handle.get(ptoff, springsOffsets);
+            for (UT_IntArray::iterator it=springsOffsets.begin(); !it.atEnd(); ++it)
+                neighbours.insert(*it);
+        }
+        else {
+            getPointNeighbours(source, ptoff, neighbours, edgeSpringSpan);
+        }
+        // FIXME: we will have repeated springs pairs atm...
+        std::set<GA_Offset>::const_iterator it;
+        for (it=neighbours.begin(); it!=neighbours.end(); ++it) {
+            const UT_Vector3 vp1 = source.getPos3(ptoff);
             const UT_Vector3 vp2 = source.getPos3(*it);
             springIndices.push_back(ptoff);
             springIndices.push_back(*it);
@@ -429,20 +410,7 @@ void createSpringsFromAttrib(const GU_Detail &source, std::vector<int> &springIn
     }
 }
 
-void copySprings(const GU_Detail &gdp,  std::vector<int> &springIndices,
-                       std::vector<float> &springLengths,  std::vector<float> &springCoefficients, 
-                       const int edgeSpringSpan)
-{
-    GA_ROHandleIA springs_handle(&gdp, GA_ATTRIB_POINT, "springs");
-    if (springs_handle.isValid())
-        createSpringsFromAttrib(gdp, springIndices, springLengths, springCoefficients);
-    else
-     /*   TODO: Currently this is almost the same as above version, 
-        so we can remove it.*/
-        createSpringsFromEdges(gdp, springIndices, springLengths, springCoefficients, edgeSpringSpan);
-}
-
-
+/*TODO Remove. */
 uint getNumSprings(const GU_Detail *gdp, const int springPerVertex=1)
 {
     uint springs = 0;
