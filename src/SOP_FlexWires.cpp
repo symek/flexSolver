@@ -272,7 +272,7 @@ SOP_FlexWires::initSystem(fpreal currentTime)
     // Copy source particles into self:
     DEBUG_PRINT("%s\n", "Before coping points and springs attribs." );
     copyPointAttribs(*gdp, myParticles, myVelocities, myActives, myPhases, -1.0);
-    copySprings(*gdp, mySpringIndices, mySpringLengths, mySpringCoefficients);
+    copySprings(*gdp, mySpringIndices, mySpringLengths, mySpringCoefficients, myMaxSpringWires);
   
     // Initialize solver with sources:
     DEBUG_PRINT("%s\n", "before flexSetParticles etc." );
