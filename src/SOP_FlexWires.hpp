@@ -137,9 +137,9 @@ private:
 
 
    
-    fpreal       FX(fpreal t)   { FLT_PARM("force", 20, 0, t) }
-    fpreal       FY(fpreal t)   { FLT_PARM("force", 20, 1, t) }
-    fpreal       FZ(fpreal t)   { FLT_PARM("force", 20, 2, t) }
+    fpreal       GX(fpreal t)   { FLT_PARM("gravity", 20, 0, t) }
+    fpreal       GY(fpreal t)   { FLT_PARM("gravity", 20, 1, t) }
+    fpreal       GZ(fpreal t)   { FLT_PARM("gravity", 20, 2, t) }
 
     const GU_Detail *mySource;
     const GU_Detail *collider;
@@ -186,25 +186,25 @@ private:
         g_params.mRelaxationMode = eFlexRelaxationLocal;
         g_params.mRelaxationFactor = 1.0;
         // max particles provided as func(maxpart)
-        g_params.mGravity[0] = 0.0f;
-        g_params.mGravity[1] = -9.8f;
-        g_params.mGravity[2] = 0.0f;
+        g_params.mGravity[0] = GX(t);
+        g_params.mGravity[1] = GY(t);
+        g_params.mGravity[2] = GZ(t);
 
         g_params.mRadius            = RADIUS(t);
-        g_params.mSolidRestDistance = SOLIDRESTDISTANCE(t);
-        g_params.mDynamicFriction   = DYNAMICFRICTION(t);
-        g_params.mStaticFriction    = STATICFRICTION(t);
-        g_params.mParticleFriction  = PARTICLEFRICTION(t);
-        g_params.mRestitution       = RESTITUTION(t);
+        // g_params.mSolidRestDistance = SOLIDRESTDISTANCE(t);
+        // g_params.mDynamicFriction   = DYNAMICFRICTION(t);
+        // g_params.mStaticFriction    = STATICFRICTION(t);
+        // g_params.mParticleFriction  = PARTICLEFRICTION(t);
+        // g_params.mRestitution       = RESTITUTION(t);
         g_params.mSleepThreshold    = SLEEPTHRESHOLD(t);
-        g_params.mShockPropagation  = SHOCKPROPAGATION(t);
-        g_params.mDissipation       = DISSIPATION(t);
+        // g_params.mShockPropagation  = SHOCKPROPAGATION(t);
+        // g_params.mDissipation       = DISSIPATION(t);
         g_params.mDamping           = DAMPING(t);
-        g_params.mInertiaBias       = INERTIABIAS(t);
+        // g_params.mInertiaBias       = INERTIABIAS(t);
 
-        g_params.mCollisionDistance       = COLLISIONDISTANCE(t);
-        g_params.mParticleCollisionMargin = PARTICLECOLLISIONMARGIN(t);
-        g_params.mShapeCollisionMargin    = SHAPECOLLISIONMARGIN(t);
+        // g_params.mCollisionDistance       = COLLISIONDISTANCE(t);
+        // g_params.mParticleCollisionMargin = PARTICLECOLLISIONMARGIN(t);
+        // g_params.mShapeCollisionMargin    = SHAPECOLLISIONMARGIN(t);
 
         // cloth:
         g_params.mWind[0] = 0.0f;
@@ -384,12 +384,12 @@ void createSpringsFromEdges(const GU_Detail &source, std::vector<int> &springInd
     {
         const GEO_Primitive *prim = source.getGEOPrimitive(*it);
         const GA_Range vertices = prim->getVertexRange();
+        int springSpan = 0; //springPerVertex;
+        // if (vertices.getEntries() <= springSpan) {
+        //     springSpan = vertices.getEntries() - springSpan-1; 
+        //     springSpan = SYSmax(springSpan, 1);
+        // }
         GA_Offset vi;
-        int springSpan = springPerVertex;
-        if (vertices.getEntries() <= springSpan) {
-            springSpan = vertices.getEntries() - springSpan-1; 
-            springSpan = SYSmax(springSpan, 1);
-        }
         for (vi = GA_Offset(0); vi < vertices.getEntries() - springSpan; ++vi) {           
             const GA_Offset vtx1 = prim->getVertexOffset(vi);
             for (int span=1; span<=springSpan; ++span) {
