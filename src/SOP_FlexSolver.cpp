@@ -1,7 +1,7 @@
 
 
 
-#include <flex.h>
+#include <NvFlex.h>
 #include <stddef.h>
 #include <iostream>
 #include <cstdio>

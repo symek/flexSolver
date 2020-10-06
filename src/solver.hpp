@@ -1,7 +1,7 @@
 #ifndef SOLVER_H
 #define SOLVER_H
 
-#include <flex.h>
+#include <NvFlex.h>
 #include <stddef.h>
 #include <iostream>
 #include <cstdio>

@@ -1,4 +1,4 @@
-#include <flex.h>
+#include <NvFlex.h>
 #include <maths.h>
 #include <memory>
 #include <iostream>
