@@ -75,7 +75,7 @@ static PRM_Name names[] = {
     PRM_Name("shapecollisionmargin", "Shape Collision Margin"),
     PRM_Name("numsubsteps", "Number of substeps"),
     PRM_Name("maxspringwires", "Springs per vertex"),
-    PRM_Name("force",        "Force"),
+    PRM_Name("gravity",        "Gravity"),
     PRM_Name("collisionground", "Use Collision Ground")
 };
 
@@ -109,7 +109,13 @@ static PRM_Default  INERTIABIAS_DEFAULT(0.001f);
 static PRM_Default  COLLISIONDISTANCE_DEFAULT(0.001f);
 static PRM_Default  PARTICLECOLLISIONMARGIN_DEFAULT(0.0f);
 static PRM_Default  SHAPECOLLISIONMARGIN_DEFAULT(0.01f);
-static PRM_Default  MAXSPRINGWIRES_DEFAULT(1); 
+static PRM_Default  MAXSPRINGWIRES_DEFAULT(1);
+static PRM_Default  GRAVITY_DEFAULTS[] =
+    {
+        PRM_Default(0.0f),
+        PRM_Default(-9.8f),
+        PRM_Default(0.0f),
+    };
 
 static PRM_Range maxSpeedRange(PRM_RANGE_RESTRICTED, 0.0, PRM_RANGE_UI, 1000.0);
 static PRM_Range maxSpringWiresRange(PRM_RANGE_RESTRICTED, 1, PRM_RANGE_UI, 10);
@@ -122,27 +128,27 @@ SOP_FlexWires::myTemplateList[] = {
     PRM_Template(PRM_INT_J, 1, &names[2], &MAXPARTICLES_DEFAULT, 0, 0, 0, 0, 1, maxParticlesHelp),
     PRM_Template(PRM_FLT_J, 1, &names[3], &RADIUS_DEFAULT, 0, 0, 0, 0, 1, radiusHelp),
 
-    PRM_Template(PRM_FLT_J, 1, &names[4], &SOLIDRESTDISTANCE_DEFAULT, 0, 0, 0, 0, 1, solidRestDistanceHelp),
-    PRM_Template(PRM_FLT_J, 1, &names[5], &DYNAMICFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[6], &STATICFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[7], &PARTICLEFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[8], &RESTITUTION_DEFAULT, 0, 0, 0, 0, 1, 0),
+    //PRM_Template(PRM_FLT_J, 1, &names[4], &SOLIDRESTDISTANCE_DEFAULT, 0, 0, 0, 0, 1, solidRestDistanceHelp),
+    //PRM_Template(PRM_FLT_J, 1, &names[5], &DYNAMICFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
+    //PRM_Template(PRM_FLT_J, 1, &names[6], &STATICFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
+   //PRM_Template(PRM_FLT_J, 1, &names[7], &PARTICLEFRICTION_DEFAULT, 0, 0, 0, 0, 1, 0),
+    //PRM_Template(PRM_FLT_J, 1, &names[8], &RESTITUTION_DEFAULT, 0, 0, 0, 0, 1, 0),
 
     PRM_Template(PRM_FLT_J, 1, &names[9],  &SLEEPTHRESHOLD_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_FLT_J, 1, &names[10], &MAXSPEED_DEFAULT, 0, &maxSpeedRange, 0, 0, 1, maxSpeedHelp),
 
-    PRM_Template(PRM_FLT_J, 1, &names[11], &SHOCKPROPAGATION_DEFAULT, 0, 0, 0, 0, 1, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[12], &DISSIPATION_DEFAULT, 0, 0, 0, 0, 1, 0),
+   // PRM_Template(PRM_FLT_J, 1, &names[11], &SHOCKPROPAGATION_DEFAULT, 0, 0, 0, 0, 1, 0),
+   // PRM_Template(PRM_FLT_J, 1, &names[12], &DISSIPATION_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_FLT_J, 1, &names[13], &DAMPING_DEFAULT, 0, 0, 0, 0, 1, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[14], &INERTIABIAS_DEFAULT, 0, 0, 0, 0, 1, 0),
+   // PRM_Template(PRM_FLT_J, 1, &names[14], &INERTIABIAS_DEFAULT, 0, 0, 0, 0, 1, 0),
 
-    PRM_Template(PRM_FLT_J, 1, &names[15], &COLLISIONDISTANCE_DEFAULT, 0, 0, 0, 0, 1, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[16], &PARTICLECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
-    PRM_Template(PRM_FLT_J, 1, &names[17], &SHAPECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
+   // PRM_Template(PRM_FLT_J, 1, &names[15], &COLLISIONDISTANCE_DEFAULT, 0, 0, 0, 0, 1, 0),
+   // PRM_Template(PRM_FLT_J, 1, &names[16], &PARTICLECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
+   // PRM_Template(PRM_FLT_J, 1, &names[17], &SHAPECOLLISIONMARGIN_DEFAULT, 0, 0, 0, 0, 1, 0),
     PRM_Template(PRM_INT,   1, &names[19], &MAXSPRINGWIRES_DEFAULT, 0, &maxSpringWiresRange, 0, 0, 1, 0),
     PRM_Template(PRM_TOGGLE,1, &names[21], PRMoneDefaults, 0, 0, 0, 0, 1, 0),
 
-    //PRM_Template(PRM_XYZ_J, 3, &names[6]),
+    PRM_Template(PRM_XYZ_J, 3, &names[20], GRAVITY_DEFAULTS),
     PRM_Template(),
 };
 
@@ -266,7 +272,7 @@ SOP_FlexWires::initSystem(fpreal currentTime)
     // Copy source particles into self:
     DEBUG_PRINT("%s\n", "Before coping points and springs attribs." );
     copyPointAttribs(*gdp, myParticles, myVelocities, myActives, myPhases, -1.0);
-    copySprings(*gdp, mySpringIndices, mySpringLengths, mySpringCoefficients);
+    copySprings(*gdp, mySpringIndices, mySpringLengths, mySpringCoefficients, myMaxSpringWires);
   
     // Initialize solver with sources:
     DEBUG_PRINT("%s\n", "before flexSetParticles etc." );

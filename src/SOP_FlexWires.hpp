@@ -137,9 +137,9 @@ private:
 
 
    
-    fpreal       FX(fpreal t)   { FLT_PARM("force", 20, 0, t) }
-    fpreal       FY(fpreal t)   { FLT_PARM("force", 20, 1, t) }
-    fpreal       FZ(fpreal t)   { FLT_PARM("force", 20, 2, t) }
+    fpreal       GX(fpreal t)   { FLT_PARM("gravity", 20, 0, t) }
+    fpreal       GY(fpreal t)   { FLT_PARM("gravity", 20, 1, t) }
+    fpreal       GZ(fpreal t)   { FLT_PARM("gravity", 20, 2, t) }
 
     const GU_Detail *mySource;
     const GU_Detail *collider;
@@ -186,25 +186,25 @@ private:
         g_params.mRelaxationMode = eFlexRelaxationLocal;
         g_params.mRelaxationFactor = 1.0;
         // max particles provided as func(maxpart)
-        g_params.mGravity[0] = 0.0f;
-        g_params.mGravity[1] = -9.8f;
-        g_params.mGravity[2] = 0.0f;
+        g_params.mGravity[0] = GX(t);
+        g_params.mGravity[1] = GY(t);
+        g_params.mGravity[2] = GZ(t);
 
         g_params.mRadius            = RADIUS(t);
-        g_params.mSolidRestDistance = SOLIDRESTDISTANCE(t);
-        g_params.mDynamicFriction   = DYNAMICFRICTION(t);
-        g_params.mStaticFriction    = STATICFRICTION(t);
-        g_params.mParticleFriction  = PARTICLEFRICTION(t);
-        g_params.mRestitution       = RESTITUTION(t);
+        // g_params.mSolidRestDistance = SOLIDRESTDISTANCE(t);
+        // g_params.mDynamicFriction   = DYNAMICFRICTION(t);
+        // g_params.mStaticFriction    = STATICFRICTION(t);
+        // g_params.mParticleFriction  = PARTICLEFRICTION(t);
+        // g_params.mRestitution       = RESTITUTION(t);
         g_params.mSleepThreshold    = SLEEPTHRESHOLD(t);
-        g_params.mShockPropagation  = SHOCKPROPAGATION(t);
-        g_params.mDissipation       = DISSIPATION(t);
+        // g_params.mShockPropagation  = SHOCKPROPAGATION(t);
+        // g_params.mDissipation       = DISSIPATION(t);
         g_params.mDamping           = DAMPING(t);
-        g_params.mInertiaBias       = INERTIABIAS(t);
+        // g_params.mInertiaBias       = INERTIABIAS(t);
 
-        g_params.mCollisionDistance       = COLLISIONDISTANCE(t);
-        g_params.mParticleCollisionMargin = PARTICLECOLLISIONMARGIN(t);
-        g_params.mShapeCollisionMargin    = SHAPECOLLISIONMARGIN(t);
+        // g_params.mCollisionDistance       = COLLISIONDISTANCE(t);
+        // g_params.mParticleCollisionMargin = PARTICLECOLLISIONMARGIN(t);
+        // g_params.mShapeCollisionMargin    = SHAPECOLLISIONMARGIN(t);
 
         // cloth:
         g_params.mWind[0] = 0.0f;
@@ -336,98 +336,64 @@ void copyPointAttribs(const GU_Detail &gdp, std::vector<float> &particles,
     }  
 }
 
-void copySpringAttribs(const GU_Detail *source, std::vector<int> &springIndices,
-                      std::vector<float> &springLengths, std::vector<float> &springCoefficients,
-                      const int springPerVertex=1)
+void getPointNeighboursRecrusive(const GU_Detail &gdp, const GA_Offset ptoff, \
+    std::set<GA_Offset> &pointList)
 {
-    uint springCounter = 0;
-    GA_ROHandleF     stiffness_handle(source, GA_ATTRIB_POINT, "stiffness");
-    for (GA_Iterator it(source->getPrimitiveRange()); !it.atEnd(); ++it)
-    {
-        const GEO_Primitive *prim = source->getGEOPrimitive(*it);
-        const GA_Range vertices = prim->getVertexRange();
-        GA_Offset vi;
-        int springSpan = springPerVertex;
-        if (vertices.getEntries() <= springSpan) {
-            springSpan = vertices.getEntries() - springSpan-1; 
-            springSpan = SYSmax(springSpan, 1);
-        }
-        for (vi = GA_Offset(0); vi < vertices.getEntries() - springSpan; ++vi) {           
-            const GA_Offset vtx1 = prim->getVertexOffset(vi);
-            for (int span=1; span<=springSpan; ++span) {
-                const GA_Offset vtx2 = prim->getVertexOffset(vi+span);
-                springIndices[2*springCounter]     = static_cast<int>(vtx1);
-                springIndices[(2*springCounter)+1] = static_cast<int>(vtx2);
-                const UT_Vector3 vp1 = source->getPos3(vtx1);
-                const UT_Vector3 vp2 = source->getPos3(vtx2);
-                springLengths[springCounter] = UT_Vector3(vp2 - vp1).length();
-                if (stiffness_handle.isValid()) {
-                    const float stiffness1 = stiffness_handle.get(vtx1);
-                    const float stiffness2 = stiffness_handle.get(vtx2);
-                    springCoefficients[springCounter] = (stiffness1+stiffness2)/2.0f;
-                }
-                else {
-                    springCoefficients[springCounter] = .5f;
-                }
-                springCounter++;
-            }
+    GA_OffsetArray pointVertices;
+    gdp.getVerticesReferencingPoint(pointVertices, ptoff);
+    for(int i=0; i < pointVertices.size(); ++i) {
+        const GA_Offset primoff   = gdp.vertexPrimitive(pointVertices(i));
+        const GA_Primitive *prim  = gdp.getPrimitive(primoff);
+        const GA_Range vertices   = prim->getPointRange();
+        GA_Range::const_iterator it;
+        for (it=vertices.begin(); !it.atEnd(); ++it) {
+            GA_Offset v1, v2;
+            if (prim->findEdgePoints(ptoff, *it, v1, v2))
+                pointList.insert(*it);
         }
     }
 }
 
-void createSpringsFromEdges(const GU_Detail &source, std::vector<int> &springIndices,
-                      std::vector<float> &springLengths, std::vector<float> &springCoefficients,
-                      const int springPerVertex=1)
+void getPointNeighbours(const GU_Detail &gdp, const GA_Offset ptoff,\
+                    std::set<GA_Offset> &pointList, const int steps=1) 
 {
-    GA_ROHandleF     stiffness_handle(&source, GA_ATTRIB_POINT, "stiffness");
-    for (GA_Iterator it(source.getPrimitiveRange()); !it.atEnd(); ++it)
-    {
-        const GEO_Primitive *prim = source.getGEOPrimitive(*it);
-        const GA_Range vertices = prim->getVertexRange();
-        GA_Offset vi;
-        int springSpan = springPerVertex;
-        if (vertices.getEntries() <= springSpan) {
-            springSpan = vertices.getEntries() - springSpan-1; 
-            springSpan = SYSmax(springSpan, 1);
+    getPointNeighboursRecrusive(gdp, ptoff, pointList);
+    for (int i=1; i<steps; ++i) {
+        std::set<GA_Offset> partial;
+        std::set<GA_Offset>::const_iterator it;
+        for(it=pointList.begin(); it!=pointList.end(); ++it) {
+            getPointNeighboursRecrusive(gdp, *it, partial);
         }
-        for (vi = GA_Offset(0); vi < vertices.getEntries() - springSpan; ++vi) {           
-            const GA_Offset vtx1 = prim->getVertexOffset(vi);
-            for (int span=1; span<=springSpan; ++span) {
-                const GA_Offset vtx2 = prim->getVertexOffset(vi+span);
-                springIndices.push_back(static_cast<int>(vtx1));
-                springIndices.push_back(static_cast<int>(vtx2));
-                const UT_Vector3 vp1 = source.getPos3(vtx1);
-                const UT_Vector3 vp2 = source.getPos3(vtx2);
-                springLengths.push_back(UT_Vector3(vp2 - vp1).length());
-                if (stiffness_handle.isValid()) {
-                    const float stiffness1 = stiffness_handle.get(vtx1);
-                    const float stiffness2 = stiffness_handle.get(vtx2);
-                    springCoefficients.push_back((stiffness1+stiffness2)/2.0f);
-                }
-                else {
-                    springCoefficients.push_back(.5f);
-                }
-            }
-        }
+        for(it=partial.begin(); it!=partial.end(); ++it)
+            pointList.insert(*it);
     }
+    pointList.erase(ptoff); //
 }
 
 
-void createSpringsFromAttrib(const GU_Detail &source, std::vector<int> &springIndices,
-                       std::vector<float> &springLengths,  std::vector<float> &springCoefficients)
+void copySprings(const GU_Detail &source, std::vector<int> &springIndices,
+        std::vector<float> &springLengths,  std::vector<float> &springCoefficients,
+        const int edgeSpringSpan=1)
 {
     GA_ROHandleF  stiffness_handle(&source, GA_ATTRIB_POINT, "stiffness");
     GA_ROHandleIA springs_handle(&source, GA_ATTRIB_POINT, "springs");
-   
-    if (!springs_handle.isValid())
-        return;
-
+    UT_IntArray   springsOffsets;
+    
     GA_Offset ptoff;
-    UT_IntArray springsOffsets;
     GA_FOR_ALL_PTOFF(&source, ptoff) {
-        springs_handle.get(ptoff, springsOffsets);
-        const UT_Vector3 vp1 = source.getPos3(ptoff);
-        for (UT_IntArray::iterator it=springsOffsets.begin(); !it.atEnd(); ++it) {
+        std::set<GA_Offset> neighbours;
+        if (springs_handle.isValid()) {
+            springs_handle.get(ptoff, springsOffsets);
+            for (UT_IntArray::iterator it=springsOffsets.begin(); !it.atEnd(); ++it)
+                neighbours.insert(*it);
+        }
+        else {
+            getPointNeighbours(source, ptoff, neighbours, edgeSpringSpan);
+        }
+        // FIXME: we will have repeated springs pairs atm...
+        std::set<GA_Offset>::const_iterator it;
+        for (it=neighbours.begin(); it!=neighbours.end(); ++it) {
+            const UT_Vector3 vp1 = source.getPos3(ptoff);
             const UT_Vector3 vp2 = source.getPos3(*it);
             springIndices.push_back(ptoff);
             springIndices.push_back(*it);
@@ -444,18 +410,7 @@ void createSpringsFromAttrib(const GU_Detail &source, std::vector<int> &springIn
     }
 }
 
-void copySprings(const GU_Detail &gdp,  std::vector<int> &springIndices,
-                       std::vector<float> &springLengths,  
-                       std::vector<float> &springCoefficients)
-{
-    GA_ROHandleIA springs_handle(&gdp, GA_ATTRIB_POINT, "springs");
-    if (springs_handle.isValid())
-        createSpringsFromAttrib(gdp, springIndices, springLengths, springCoefficients);
-    else
-        createSpringsFromEdges(gdp, springIndices, springLengths, springCoefficients);
-}
-
-
+/*TODO Remove. */
 uint getNumSprings(const GU_Detail *gdp, const int springPerVertex=1)
 {
     uint springs = 0;
