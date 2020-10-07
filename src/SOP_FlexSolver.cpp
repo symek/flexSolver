@@ -1,16 +1,6 @@
-
-
-
 #include <NvFlex.h>
 #include <stddef.h>
-#include <iostream>
-#include <cstdio>
-#include <fstream>
 #include <vector>
-#include <math.h> // floor()
-#include <time.h>
-#include <stdlib.h> // for NULL wtf?"
-
 
 #include "SOP_FlexSolver.hpp"
 
@@ -27,9 +17,7 @@
 #include <PRM/PRM_Include.h>
 
 #include <UT/UT_DSOVersion.h>
-#include <UT/UT_Interrupt.h>
 #include <UT/UT_Vector3.h>
-#include <UT/UT_Vector4.h>
 
 using namespace SOPFlexSolver;
 
@@ -101,10 +89,10 @@ SOP_FlexSolver::myConstructor(OP_Network *net, const char *name, OP_Operator *op
 
 SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *op)
     : SOP_Node(net, name, op)
-    , mySystem(NULL)
-    , mySolver(NULL)
-    , myTimer(NULL)
-    , myParms(NULL)
+    , mySystem(nullptr)
+    , solver(nullptr)
+    , myTimer(nullptr)
+    , myParms(nullptr)
     , maxParticles(1048576) // Reasonable.
 {
     // Make sure that our offsets are allocated.  Here we allow up to 32
@@ -115,31 +103,21 @@ SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *o
 
     // Now, flag that nothing has been built yet...
     myVelocity.clear();
+    library = NvFlexInit();
+    NvFlexSolverDesc solverDesc;
+    NvFlexSetSolverDescDefaults(&solverDesc);
+    solverDesc.maxParticles = maxParticles;
+    solverDesc.maxDiffuseParticles = 0;
+    solver = NvFlexCreateSolver(library, &solverDesc);
 
-    FlexError status = flexInit();
-
-    if(status)
-    {
-        switch(status)
-        {
-            case 0:
-            break;
-            case 1:
-            std::cout << "FlexError: The header version does not match the library binary." << std::endl;
-            return ;
-            case 2:
-            std::cout << "FlexError:The GPU associated with the calling thread does not meet requirements." << std::endl;
-            std::cout << "An SM3.0 GPU or above is required" << std::endl;
-            return ;
-        }
-    }
+    // TODO: add init error handling
 }
 
 SOP_FlexSolver::~SOP_FlexSolver()
 {
   
-    flexDestroySolver(mySolver);
-    flexShutdown();
+    NvFlexDestroySolver(solver);
+    NvFlexShutdown(library);
     if (myTimer)
         delete myTimer;
     if (myParms)
@@ -156,6 +134,8 @@ SOP_FlexSolver::timeStep(fpreal now)
     if (error() >= UT_ERROR_ABORT)
         return;
 
+    float3* velocities  = (float3*)NvFlexMap(velocitiesBuffer, eNvFlexMapWait);
+
    for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
     {
         UT_Vector3 vel;
@@ -167,30 +147,34 @@ SOP_FlexSolver::timeStep(fpreal now)
         vel += force;
         uint index = static_cast<int>(srcptoff);
         uint v = index * 3;
-        velocities[v]   = vel.x();
-        velocities[v+1] = vel.y();
-        velocities[v+2] = vel.z();
+        velocities[v][0]  = vel.x();
+        velocities[v][1] = vel.y();
+        velocities[v][2] = vel.z();
     }
 
+    NvFlexUnmap(velocitiesBuffer);
+
     InitFlexParams(*myParms, now);
-    flexSetParams(mySolver, myParms);
-    flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
+    NvFlexSetParams(solver, myParms);
+    NvFlexSetVelocities(solver, velocitiesBuffer, nullptr);
 
      const float dt = 1.0 / 24.0;
      const int substeps = 1;
 
     // tick solver
-    flexUpdateSolver(mySolver, dt, substeps, myTimer);
+    NvFlexUpdateSolver(solver, dt, substeps, myTimer);
     // update GPU data asynchronously
   
-    flexGetParticles(mySolver, (float*)&particles[0], maxParticles, eFlexMemoryHost);
+    NvFlexGetParticles(solver, particlesBuffer, nullptr);
 
+    float3* particles  = (float3*)NvFlexMap(particlesBuffer, eNvFlexMapWait);
     for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
     {
        uint p = static_cast<int>(srcptoff) * 4;
-       const UT_Vector3 pos = UT_Vector3(particles[p], particles[p+1], particles[p+2]);
+       const UT_Vector3 pos = UT_Vector3(particles[p][0], particles[p][1], particles[p][2]);
        gdp->setPos3(srcptoff, pos);
     }
+    NvFlexUnmap(particlesBuffer);
 }
 
 void 
@@ -216,6 +200,10 @@ SOP_FlexSolver::resetGdp()
 
 void SOP_FlexSolver::copySourceParticles()
 {
+    float4* particles = (float4*)NvFlexMap(particlesBuffer, eNvFlexMapWait);
+    float3* velocities = (float3*)NvFlexMap(velocitiesBuffer, eNvFlexMapWait);
+//    int* phases = (int*)NvFlexMap(phasesBuffer, eFlexMapWait);
+
     if (mySource)
     {
         for (GA_Offset srcptoff = 0; srcptoff < maxParticles; ++srcptoff)
@@ -229,19 +217,19 @@ void SOP_FlexSolver::copySourceParticles()
             uint index = static_cast<int>(srcptoff);
             uint p = index * 4;
             uint v = index * 3;
-            particles[p]    = pos.x();
-            particles[p+1]  = pos.y();
-            particles[p+2]  = pos.z();
-            particles[p+3]  = 1.0;
-            velocities[v]   = vel.x();
-            velocities[v+1] = vel.y();
-            velocities[v+2] = vel.z();
+            particles[p][0]  = pos.x();
+            particles[p][1]  = pos.y();
+            particles[p][2]  = pos.z();
+            particles[p][3]  = 1.0;
+            velocities[v][0] = vel.x();
+            velocities[v][1] = vel.y();
+            velocities[v][2] = vel.z();
 
             gdp->insertPointCopy(srcptoff);
             gdp->setPos3(srcptoff, pos);
         }
     }
-
+    // FIXME; should we unmap here?
 }
 
 void
@@ -251,40 +239,46 @@ SOP_FlexSolver::initSystem(fpreal current_time)
         return;
 
 
-    if (mySolver)
+    if (solver)
     {
-        flexDestroySolver(mySolver);
-        if (myTimer) delete myTimer;
-        if (myParms) delete myParms;
-        mySolver = NULL;
-        myTimer  = NULL;
-        myParms  = NULL;
+        NvFlexDestroySolver(solver);
+        if (myTimer)
+            delete myTimer;
+        if (myParms)
+            delete myParms;
+        solver = nullptr;
+        myTimer  = nullptr;
+        myParms  = nullptr;
     }
 
 
     if (!gdp) 
         gdp = new GU_Detail;
 
-    if (!mySolver)
+    if (!solver)
     {
-        mySolver  = flexCreateSolver(maxParticles,0);
-        myTimer   = new FlexTimers();
-        myParms   = new FlexParams();
+        NvFlexSolverDesc solverDesc;
+        NvFlexSetSolverDescDefaults(&solverDesc);
+        solverDesc.maxParticles = maxParticles;
+        solverDesc.maxDiffuseParticles = 0;
+        solver = NvFlexCreateSolver(library, &solverDesc);
+        myTimer   = new NvFlexTimers();
+        myParms   = new NvFlexParams();
     }
 
     // Clean previous geometry;
     resetGdp();
 
     // TMP: add collision ground:
-    myParms->mPlanes[0][0] = 0.0f;
-    myParms->mPlanes[0][1] = 1.0f;
-    myParms->mPlanes[0][2] = 0.0f;
-    myParms->mPlanes[0][3] = 0.0f;
-    myParms->mNumPlanes = 1;
+    myParms->planes[0][0] = 0.0f;
+    myParms->planes[0][1] = 1.0f;
+    myParms->planes[0][2] = 0.0f;
+    myParms->planes[0][3] = 0.0f;
+    myParms->numPlanes = 1;
 
     // Set parameters for solver:
     InitFlexParams(*myParms, current_time);
-    flexSetParams(mySolver, myParms);
+    NvFlexSetParams(solver, myParms);
 
     // Make sure we can handle particles count.
     uint nSourcePoints = mySource->getPointMap().indexSize();
@@ -292,29 +286,30 @@ SOP_FlexSolver::initSystem(fpreal current_time)
 
     // alloc CUDA pinned host memory to allow asynchronous memory transfers
     // Above isn't true TODO
-    particles.resize(maxParticles*4, 0.0f);
-    velocities.resize(maxParticles*3, 0.0f);
-    actives.resize(maxParticles, 0.0f);
+    particlesBuffer  = NvFlexAllocBuffer(library, maxParticles, sizeof(float)*4, eNvFlexBufferHost);
+    velocitiesBuffer = NvFlexAllocBuffer(library, maxParticles, sizeof(float)*4, eNvFlexBufferHost);
+    //    actives.resize(maxParticles, 0.0f);
 
-    int fluidPhase  = flexMakePhase(0, eFlexPhaseSelfCollide | eFlexPhaseFluid);
-    phases.resize(maxParticles);
+    int fluidPhase  = NvFlexMakePhase(0, NvFlexPhase::eNvFlexPhaseSelfCollide | NvFlexPhase::eNvFlexPhaseFluid);
+    phasesBuffer  = NvFlexAllocBuffer(library, maxParticles, sizeof(int), eNvFlexBufferHost);
+    int* phases = (int*)NvFlexMap(phasesBuffer, NvFlexMapFlags::eNvFlexMapWait);
 
     // Create active particels set:
-    for (int i=0; i < maxParticles; ++i)
-    {
-        actives[i] = i;
+    for (int i=0; i < maxParticles; ++i) {
         phases[i] = fluidPhase;
     }
 
+    NvFlexUnmap(phasesBuffer);
     // Copy source particles into self:
     copySourceParticles();
-  
+    NvFlexUnmap(particlesBuffer);
+    NvFlexUnmap(velocitiesBuffer);
+
     // Initialize solver with sources:
-    flexSetParticles(mySolver, &particles[0], maxParticles, eFlexMemoryHost);
-    flexSetVelocities(mySolver, &velocities[0], maxParticles, eFlexMemoryHost);
-    flexSetPhases(mySolver, &phases[0], maxParticles, eFlexMemoryHost);
-    flexSetActive(mySolver, &actives[0], maxParticles, eFlexMemoryHost);
-    
+    NvFlexSetParticles(solver, particlesBuffer, nullptr );
+    NvFlexSetVelocities(solver, velocitiesBuffer, nullptr);
+    NvFlexSetPhases(solver, phasesBuffer, nullptr );
+//    NvFlexSetActive(solver, reinterpret_cast<NvFlexBuffer *>(actives), nullptr );
 
 }
 
@@ -330,15 +325,15 @@ SOP_FlexSolver::cookMySop(OP_Context &context)
 
     // Now, indicate that we are time dependent (i.e. have to cook every
     // time the current frame changes).
-    OP_Node::flags().timeDep = 1;
+    this->flags().setTimeDep(true);
 
     // Channel manager has time info for us
     CH_Manager *chman = OPgetDirector()->getChannelManager();
 
     // This is the frame that we're cooking at...
-    fpreal current_time = context.getTime();
-    fpreal currframe = chman->getSample(context.getTime());
-    fpreal reset = RESET(); // Find our reset frame...
+    const fpreal current_time = context.getTime();
+          fpreal currframe = chman->getSample(current_time);
+    const fpreal reset = RESET(); // Find our reset frame...
     maxParticles = MAXPARTICLES();
 
     // Set up our source information...
@@ -352,7 +347,7 @@ SOP_FlexSolver::cookMySop(OP_Context &context)
         mySourceVel = GA_ROHandleV3(mySource->findFloatTuple(GA_ATTRIB_POINT, "N", 3));
     }
 
-    if (currframe <= reset || !mySolver)
+    if (currframe <= reset || !solver)
     {
         myLastCookTime = reset;
         initSystem(current_time);
@@ -407,81 +402,3 @@ SOP_FlexSolver::inputLabel(unsigned inum) const
     }
     return "Unknown source";
 }
-
-
-
-// void
-// SOP_SParticle::birthParticle()
-// {
-//     // Strictly speaking, we should be using mySource->getPointMap() for the
-//     // initial invalid point, but mySource may be NULL.
-//     GA_Offset srcptoff = GA_INVALID_OFFSET;
-//     GA_Offset vtxoff = mySystem->giveBirth();
-//     if (mySource)
-//     {
-//     if (mySourceNum >= mySource->getPointMap().indexSize())
-//         mySourceNum = 0;
-//     if (mySource->getPointMap().indexSize() > 0) // No points in the input
-//         srcptoff = mySource->pointOffset(mySourceNum);
-//     mySourceNum++; // Move on to the next source point...
-//     }
-//     GA_Offset ptoff = gdp->vertexPoint(vtxoff);
-//     if (GAisValid(srcptoff))
-//     {
-//     gdp->setPos3(ptoff, mySource->getPos3(srcptoff));
-//     if (mySourceVel.isValid())
-//             myVelocity.set(ptoff, mySourceVel.get(srcptoff));
-//     else
-//             myVelocity.set(ptoff, UT_Vector3(0, 0, 0));
-//     }
-//     else
-//     {
-//         gdp->setPos3(ptoff, SYSdrand48()-.5, SYSdrand48()-.5, SYSdrand48()-.5);
-//     myVelocity.set(ptoff, UT_Vector3(0, 0, 0));
-//     }
-//     // First index of the life variable represents how long the particle has
-//     // been alive (set to 0).
-//     myLife.set(ptoff, 0, 0);
-//     // The second index of the life variable represents how long the particle
-//     // will live (in frames)
-//     myLife.set(ptoff, 1, 30+30*SYSdrand48());
-// }
-
-// int
-// SOP_SParticle::moveParticle(GA_Offset ptoff, const UT_Vector3 &force)
-// {
-//     float life = myLife.get(ptoff, 0);
-//     float death = myLife.get(ptoff, 1);
-//     life += 1;
-//     myLife.set(ptoff, life, 0); // Store back in point
-//     if (life >= death)
-//         return 0;               // The particle should die!
-
-//     float tinc = 1./30.;        // Hardwire 1/30 of a second time inc...
-
-//     // Adjust the velocity (based on the force) - of course, the multiplies
-//     // can be pulled out of the loop...
-//     UT_Vector3 vel = myVelocity.get(ptoff);
-//     vel += tinc*force;
-//     myVelocity.set(ptoff, vel);
-
-//     // Now adjust the point positions
-
-//     if (myCollision)
-//     {
-//     UT_Vector3 dir = vel * tinc;
-
-//     // here, we only allow hits within the length of the velocity vector
-//     GU_RayInfo info(dir.normalize());
-
-//     UT_Vector3 start = gdp->getPos3(ptoff);
-//     if (myCollision->sendRay(start, dir, info) > 0)
-//         return 0;   // We hit something, so kill the particle
-//     }
-
-//     UT_Vector3 pos = gdp->getPos3(ptoff);
-//     pos += tinc*vel;
-//     gdp->setPos3(ptoff, pos);
-
-//     return 1;
-// }

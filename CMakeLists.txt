@@ -8,6 +8,7 @@ find_package( Houdini REQUIRED )
 message (STATUS "Houdini HDK: ${Houdini_VERSION}")
 
 # CUDA
+# FIXME: Add CUDA CMake module
 if(NOT DEFINED ENV{CUDA_HOME})
     message(FATAL_ERROR "Can't proceed without CUDA_HOME point to CUDA installation folder")
 else()
@@ -19,6 +20,7 @@ include_directories(${CUDA_HOME}/include)
 link_directories(${CUDA_HOME}/lib64)
 
 # FleX
+# TODO: Make FleX submodule?
 if(NOT DEFINED ENV{FLEX_HOME})
     message(FATAL_ERROR "Can't proceed without FLEX_HOME point to FLEX installation folder")
 else()
@@ -27,7 +29,7 @@ endif()
 
 set(FLEX_HOME $ENV{FLEX_HOME})
 include_directories(${FLEX_HOME}/include)
-link_directories(${FLEX_HOME}/lib64)
+link_directories(${FLEX_HOME}/lib/linux64)
 
 include_directories(src)
 add_library(flexSolver SHARED
@@ -38,8 +40,16 @@ add_library(flexSolver SHARED
 #        src/solver.hpp
         src/SOP_FlexSolver.cpp
         src/SOP_FlexSolver.hpp
-        src/SOP_FlexWires.cpp
-        src/SOP_FlexWires.hpp)
+#        src/SOP_FlexWires.cpp
+#        src/SOP_FlexWires.hpp
+        )
 
+# FIXME
+target_link_libraries(flexSolver cudart )
+target_link_libraries(flexSolver ${FLEX_HOME}/lib/linux64/NvFlexDeviceDebug_x64.a )
+target_link_libraries(flexSolver ${FLEX_HOME}/lib/linux64/NvFlexDebugCUDA_x64.a )
+target_link_libraries(flexSolver ${FLEX_HOME}/lib/linux64/NvFlexExtDebugCUDA_x64.a )
 target_link_libraries( flexSolver Houdini )
 houdini_configure_target( flexSolver )
+
+
