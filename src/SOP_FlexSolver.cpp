@@ -103,7 +103,21 @@ SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *o
 
     // Now, flag that nothing has been built yet...
     myVelocity.clear();
-    library = NvFlexInit();
+    NvFlexInitDesc desc;
+    desc.deviceIndex = 0;
+    desc.enableExtensions = 1;
+    desc.renderDevice = 0;
+    desc.renderContext = 0;
+    desc.computeContext = 0;
+    desc.computeType = eNvFlexCUDA;
+
+    library = NvFlexInit(NV_FLEX_VERSION, ErrorCallback, &desc);
+    if (NvFlexInit_failed || library == nullptr)
+	{
+		printf("Could not initialize Flex, exiting.\n");
+		exit(-1);
+	}
+
     NvFlexSolverDesc solverDesc;
     NvFlexSetSolverDescDefaults(&solverDesc);
     solverDesc.maxParticles = maxParticles;
@@ -113,9 +127,7 @@ SOP_FlexSolver::SOP_FlexSolver(OP_Network *net, const char *name, OP_Operator *o
     // TODO: add init error handling
 }
 
-SOP_FlexSolver::~SOP_FlexSolver()
-{
-  
+SOP_FlexSolver::~SOP_FlexSolver() {
     NvFlexDestroySolver(solver);
     NvFlexShutdown(library);
     if (myTimer)

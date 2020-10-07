@@ -18,6 +18,15 @@ namespace SOPFlexSolver {
 
     using float4 = float[4];
     using float3 = float[3];
+    bool NvFlexInit_failed = false;
+
+
+    void ErrorCallback(NvFlexErrorSeverity severity, const char* msg, const char* file, int line)
+{
+	printf("Flex: %s - %s:%d\n", msg, file, line);
+	NvFlexInit_failed = (severity == eNvFlexLogError);
+	//assert(0); asserts are bad for TeamCity
+}
 
 class SOP_FlexSolver : public SOP_Node
 {
